@@ -1,0 +1,35 @@
+# Dependencies / vendors
+vendor/
+node_modules/
+
+# Environment / secrets — never commit
+.env
+.env.local
+config.local.php
+
+# WampServer / IDE artefacts
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/
+.agents/
+
+# Scratch / dev debug scripts — never commit
+scratch/
+
+# Database dumps — never commit
+*.sql.gz
+backups/
+
+# Storage (reports, exports — directory tracked, content is not)
+storage/reports/**
+!storage/reports/.gitkeep
+storage/exports/**
+!storage/exports/.gitkeep
+
+# Uploads
+uploads/**
+!uploads/.htaccess
+!uploads/.gitkeep

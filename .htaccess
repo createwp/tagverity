@@ -1,0 +1,32 @@
+Options -Indexes
+
+# Block direct access to sensitive directories
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block access to includes/
+    RewriteRule ^includes/ - [F,L]
+
+    # Block access to src/
+    RewriteRule ^src/ - [F,L]
+
+    # Block access to cron/
+    RewriteRule ^cron/ - [F,L]
+
+    # Block access to sql/
+    RewriteRule ^sql/ - [F,L]
+</IfModule>
+
+# Protect .env files
+<FilesMatch "^\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

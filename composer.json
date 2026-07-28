@@ -1,0 +1,22 @@
+{
+    "name": "createwp/tagverity",
+    "description": "Measurement operations platform for designing, auditing, deploying, and verifying analytics tagging.",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "vlucas/phpdotenv": "^5.6",
+        "google/apiclient": "^2.15",
+        "google/cloud-bigquery": "^1.28",
+        "stripe/stripe-php": "^13.0",
+        "dompdf/dompdf": "^2.0",
+        "phpmailer/phpmailer": "^6.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "GTMAuditor\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}
