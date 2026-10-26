@@ -76,8 +76,8 @@ $credits_limit = (int)($current_plan['audit_credits_monthly'] ?? 5);
   <div class="main-content">
 
     <div class="page-header">
-      <div>
-        <h1 class="page-title">Billing & Plans</h1>
+      <div class="page-header-copy">
+        <h1 class="page-title">Billing &amp; plans</h1>
         <p class="page-subtitle">
           Current plan: <strong><?= htmlspecialchars($current_plan['name'], ENT_QUOTES, 'UTF-8') ?></strong> ·
           <?= $credits_used ?> / <?= $credits_limit < 0 ? '∞' : $credits_limit ?> audits used this month
@@ -89,7 +89,7 @@ $credits_limit = (int)($current_plan['audit_credits_monthly'] ?? 5);
 
       <?php if (!STRIPE_SECRET_KEY || STRIPE_SECRET_KEY === 'sk_test_REPLACE_ME'): ?>
       <div class="alert alert-warning mb-6">
-        ⚠️ Stripe is not configured yet. Set <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_PUBLISHABLE_KEY</code>, and <code>STRIPE_WEBHOOK_SECRET</code> in your <code>.env</code> file to enable billing.
+        <span class="alert-icon"><?= app_icon('alert') ?></span><span>Stripe is not configured yet. Set <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_PUBLISHABLE_KEY</code>, and <code>STRIPE_WEBHOOK_SECRET</code> in your <code>.env</code> file to enable billing.</span>
       </div>
       <?php endif; ?>
 

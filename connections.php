@@ -2,10 +2,9 @@
 // ─── connections.php — Manage Google Account connections + trigger OAuth ──────
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/includes/google-oauth.php';
 $user        = require_auth();
 $active_page = 'connections';
-
-use Google\Client as GoogleClient;
 
 // CSRF
 if (empty($_SESSION['csrf_token'])) {
@@ -13,24 +12,7 @@ if (empty($_SESSION['csrf_token'])) {
 }
 
 // Build Google OAuth URL for connecting a new account
-$google_auth_url = '';
-if (GOOGLE_CLIENT_ID) {
-    $client = new GoogleClient();
-    $client->setClientId(GOOGLE_CLIENT_ID);
-    $client->setClientSecret(GOOGLE_CLIENT_SECRET);
-    $client->setRedirectUri(APP_URL . '/api/oauth-callback.php');
-    $client->setAccessType('offline');
-    $client->setPrompt('select_account consent');
-    $client->addScope('https://www.googleapis.com/auth/tagmanager.readonly');
-    $client->addScope('https://www.googleapis.com/auth/analytics.readonly');
-    $client->addScope('https://www.googleapis.com/auth/analytics');
-    $client->addScope('https://www.googleapis.com/auth/bigquery.readonly');
-    $client->addScope('https://www.googleapis.com/auth/cloud-platform.read-only');
-    $state = bin2hex(random_bytes(16));
-    $_SESSION['oauth_state'] = $state;
-    $client->setState($state);
-    $google_auth_url = $client->createAuthUrl();
-}
+$google_auth_url = google_oauth_url('/connections.php');
 
 // Fetch existing connections for this account
 $stmt = db()->prepare(
@@ -58,9 +40,9 @@ $flash_success = $_GET['connected'] ?? '';
   <div class="main-content">
 
     <div class="page-header">
-      <div>
-        <h1 class="page-title">Google Connections</h1>
-        <p class="page-subtitle">Connect Google accounts to enable GTM & GA4 auditing</p>
+      <div class="page-header-copy">
+        <h1 class="page-title">Google connections</h1>
+        <p class="page-subtitle">Connect Google to audit GTM and GA4.</p>
       </div>
     </div>
 
@@ -68,20 +50,20 @@ $flash_success = $_GET['connected'] ?? '';
 
       <?php if ($flash_error): ?>
       <div class="alert alert-error" data-auto-dismiss>
-        ⚠️ OAuth error: <?= htmlspecialchars($flash_error, ENT_QUOTES, 'UTF-8') ?>. Please try connecting again.
+        <span class="alert-icon"><?= app_icon('alert') ?></span><span>OAuth error: <?= htmlspecialchars($flash_error, ENT_QUOTES, 'UTF-8') ?>. Please try connecting again.</span>
       </div>
       <?php endif; ?>
 
       <?php if ($flash_success): ?>
       <div class="alert alert-success" data-auto-dismiss>
-        ✅ Google account connected successfully! Running auto-discovery of your GTM containers, GA4 properties, and domains…
+        <span class="alert-icon"><?= app_icon('check-circle') ?></span><span>Google account connected successfully! Running auto-discovery of your GTM containers, GA4 properties, and domains…</span>
       </div>
       <?php endif; ?>
 
       <!-- Connect CTA -->
       <div class="card mb-6" style="border-style:dashed;display:flex;align-items:center;gap:var(--space-6);flex-wrap:wrap">
         <div style="flex:1;min-width:240px">
-          <div style="font-size:2rem;margin-bottom:var(--space-2)">🔗</div>
+          <div class="feature-icon"><?= app_icon('link') ?></div>
           <h2 style="font-size:1rem;font-weight:700;margin-bottom:var(--space-1)">Connect a Google Account</h2>
           <p class="text-sm text-muted">
             One OAuth consent screen grants access to GTM Management API, GA4 Data API, and BigQuery.
@@ -95,7 +77,7 @@ $flash_success = $_GET['connected'] ?? '';
         </a>
         <?php else: ?>
         <div class="alert alert-warning" style="margin:0">
-          ⚠️ Google OAuth is not configured. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in your <code>.env</code> file.
+          <span class="alert-icon"><?= app_icon('alert') ?></span><span>Google OAuth is not configured. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in your <code>.env</code> file.</span>
         </div>
         <?php endif; ?>
       </div>
@@ -108,14 +90,14 @@ $flash_success = $_GET['connected'] ?? '';
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-3)">
           <?php
           $scopes = [
-            ['🏷️', 'GTM Management API', 'Read-only access to your GTM containers, tags, triggers, and variables'],
-            ['📊', 'GA4 Analytics API',   'Read access to GA4 reporting data — sessions, events, dimensions'],
-            ['🗄️', 'BigQuery API',         'Read-only access to GA4 BigQuery exports (Pro plan only)'],
-            ['☁️', 'Cloud Platform',       'Discover GCP projects linked to your Google account'],
+            ['tags', 'GTM Management API', 'Read, edit, and publish access so approved TagVerity releases can be deployed'],
+            ['dashboard', 'GA4 Analytics API',   'Read access to GA4 reporting data — sessions, events, dimensions'],
+            ['database', 'BigQuery API',         'Read-only access to GA4 BigQuery exports (Pro plan only)'],
+            ['server', 'Cloud Platform',       'Discover GCP projects linked to your Google account'],
           ];
           foreach ($scopes as [$icon, $name, $desc]): ?>
           <div style="display:flex;gap:var(--space-3);align-items:flex-start;padding:var(--space-3);background:var(--bg-elevated);border-radius:var(--radius-sm)">
-            <span style="font-size:1.3rem;flex-shrink:0"><?= $icon ?></span>
+            <span class="feature-list-icon"><?= app_icon($icon) ?></span>
             <div>
               <div style="font-size:0.82rem;font-weight:600"><?= $name ?></div>
               <div class="text-xs text-muted"><?= $desc ?></div>

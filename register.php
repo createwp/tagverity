@@ -1,6 +1,7 @@
 <?php
 // ─── Registration page ────────────────────────────────────────────────────────
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/icons.php';
 require_once __DIR__ . '/includes/rate-limit.php';
 
 // Already logged in → go to dashboard
@@ -112,15 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="auth-card" style="max-width:460px">
 
     <div class="auth-logo">
-      <div class="auth-logo-icon">🔍</div>
-      <span class="auth-logo-name">GTM Auditor</span>
+      <div class="auth-logo-icon"><?= app_icon('brand') ?></div>
+      <span class="auth-logo-name">TagVerity</span>
     </div>
 
     <h1 class="auth-title">Create your account</h1>
     <p class="auth-subtitle">Start auditing GTM containers for free</p>
 
     <?php if ($error): ?>
-    <div class="alert alert-error">⚠️ <?= $error ?></div>
+    <div class="alert alert-error"><span class="alert-icon"><?= app_icon('alert') ?></span><span><?= $error ?></span></div>
     <?php endif; ?>
 
     <form method="POST" action="register.php" id="register-form" novalidate>
@@ -156,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               style="display:none" class="acct-type-radio">
             <div class="card acct-type-card <?= $fields['account_type'] === 'standalone' ? 'selected' : '' ?>"
                  style="padding:var(--space-3); text-align:center; cursor:pointer;">
-              <div style="font-size:1.4rem;margin-bottom:4px">🏢</div>
+              <div class="account-type-icon"><?= app_icon('building') ?></div>
               <div style="font-size:0.8rem;font-weight:600">My Business</div>
               <div style="font-size:0.7rem;color:var(--text-muted)">Auditing my own sites</div>
             </div>
@@ -167,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               style="display:none" class="acct-type-radio">
             <div class="card acct-type-card <?= $fields['account_type'] === 'agency' ? 'selected' : '' ?>"
                  style="padding:var(--space-3); text-align:center; cursor:pointer;">
-              <div style="font-size:1.4rem;margin-bottom:4px">🏛️</div>
+              <div class="account-type-icon"><?= app_icon('briefcase') ?></div>
               <div style="font-size:0.8rem;font-weight:600">Agency</div>
               <div style="font-size:0.7rem;color:var(--text-muted)">Managing client sites</div>
             </div>

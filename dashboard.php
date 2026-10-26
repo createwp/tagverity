@@ -10,12 +10,23 @@ $pdo = db();
 // ── Fetch the first client for this account ────────────────────────────────────
 // (Agencies will have a client picker in a future iteration)
 $client = $pdo->prepare(
-    "SELECT * FROM clients WHERE account_id = ? ORDER BY id ASC LIMIT 1"
+    "SELECT id, name FROM clients WHERE account_id = ? ORDER BY id ASC LIMIT 1"
 );
 $client->execute([$user['account_id']]);
 $client = $client->fetch();
 
 $client_id = $client ? (int)$client['id'] : 0;
+$tracking_setup_status = 'not_started';
+
+if ($client_id) {
+    $s = $pdo->prepare("SELECT status FROM onboarding_profiles WHERE client_id = ? LIMIT 1");
+    $s->execute([$client_id]);
+    $tracking_setup_status = $s->fetchColumn() ?: 'not_started';
+}
+
+$tracking_setup_label = $tracking_setup_status === 'plan_ready'
+    ? 'Review tracking setup'
+    : ($tracking_setup_status === 'questions_ready' ? 'Continue setup wizard' : 'Start setup wizard');
 
 // ── Stats ──────────────────────────────────────────────────────────────────────
 $total_audits = 0;
@@ -103,21 +114,26 @@ function scoreColor(int $score): string {
 
     <!-- Page Header -->
     <div class="page-header">
-      <div>
+      <div class="page-header-copy">
         <h1 class="page-title">Dashboard</h1>
         <p class="page-subtitle">
           <?= $client ? htmlspecialchars($client['name'], ENT_QUOTES, 'UTF-8') : 'No client configured yet' ?>
         </p>
       </div>
-      <?php if ($client_id): ?>
-      <form method="POST" action="api/trigger-audit.php" id="trigger-form">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
-        <input type="hidden" name="client_id"  value="<?= $client_id ?>">
-        <button type="submit" class="btn btn-primary" id="trigger-btn">
-          ▶ Run Audit
-        </button>
-      </form>
-      <?php endif; ?>
+      <div class="page-header-actions">
+        <a href="onboarding.php<?= $client_id ? '?client_id=' . $client_id : '' ?>" class="btn btn-secondary">
+          <?= app_icon('sparkles') ?> <?= htmlspecialchars($tracking_setup_label, ENT_QUOTES, 'UTF-8') ?>
+        </a>
+        <?php if ($client_id): ?>
+        <form method="POST" action="api/trigger-audit.php" id="trigger-form">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+          <input type="hidden" name="client_id" value="<?= $client_id ?>">
+          <button type="submit" class="btn btn-primary" id="trigger-btn">
+            <?= app_icon('play') ?> Run Audit
+          </button>
+        </form>
+        <?php endif; ?>
+      </div>
     </div>
 
     <!-- Body -->
@@ -125,15 +141,15 @@ function scoreColor(int $score): string {
 
       <?php if (isset($_GET['welcome'])): ?>
       <div class="alert alert-success mb-4">
-        🎉 Welcome to GTM Auditor! Connect your Google account to run your first audit.
-        <a href="connections.php" class="btn btn-sm btn-secondary" style="margin-left:auto">Connect Google →</a>
+        <span class="alert-icon"><?= app_icon('sparkles') ?></span><span>Welcome to TagVerity! Connect your Google account to run your first audit.</span>
+        <a href="connections.php" class="btn btn-sm btn-secondary" style="margin-left:auto">Connect Google <?= app_icon('arrow-right') ?></a>
       </div>
       <?php endif; ?>
 
       <?php if (!$client_id): ?>
       <!-- No client yet -->
       <div class="empty-state">
-        <div class="empty-state-icon">🏗️</div>
+        <div class="empty-state-icon"><?= app_icon('construction') ?></div>
         <h3>Set up your first client</h3>
         <p>Create a client, connect your Google account, and run your first GTM audit in minutes.</p>
         <a href="connections.php" class="btn btn-primary mt-4">Connect Google Account</a>
@@ -166,7 +182,7 @@ function scoreColor(int $score): string {
           </div>
           <div class="health-score-label">Health Score</div>
           <?php else: ?>
-          <div class="stat-icon brand" style="margin:0 auto">📊</div>
+          <div class="stat-icon brand" style="margin:0 auto"><?= app_icon('dashboard') ?></div>
           <div class="stat-value" style="margin-top:var(--space-2)">—</div>
           <div class="stat-label">No audits yet</div>
           <?php endif; ?>
@@ -174,7 +190,7 @@ function scoreColor(int $score): string {
 
         <!-- Critical findings -->
         <div class="stat-card">
-          <div class="stat-icon critical">🔴</div>
+          <div class="stat-icon critical"><?= app_icon('alert') ?></div>
           <div>
             <div class="stat-value" style="color:var(--critical)"><?= $critical_count ?></div>
             <div class="stat-label">Critical findings</div>
@@ -183,7 +199,7 @@ function scoreColor(int $score): string {
 
         <!-- Warnings -->
         <div class="stat-card">
-          <div class="stat-icon warning">🟡</div>
+          <div class="stat-icon warning"><?= app_icon('alert') ?></div>
           <div>
             <div class="stat-value" style="color:var(--warning)"><?= $warning_count ?></div>
             <div class="stat-label">Warnings</div>
@@ -192,7 +208,7 @@ function scoreColor(int $score): string {
 
         <!-- Audit credits -->
         <div class="stat-card">
-          <div class="stat-icon brand">⚡</div>
+          <div class="stat-icon brand"><?= app_icon('activity') ?></div>
           <div>
             <div class="stat-value">
               <?= $credits_used ?><?= $credits_limit === PHP_INT_MAX ? '' : '/' . $credits_limit ?>
@@ -210,12 +226,12 @@ function scoreColor(int $score): string {
             <div class="card-title">Audit History</div>
             <div class="card-subtitle">Recent audit runs for this client</div>
           </div>
-          <a href="audits.php?client_id=<?= $client_id ?>" class="btn btn-ghost btn-sm">View all →</a>
+          <a href="audits.php?client_id=<?= $client_id ?>" class="btn btn-ghost btn-sm">View all <?= app_icon('arrow-right') ?></a>
         </div>
 
         <?php if (empty($recent_audits)): ?>
         <div class="empty-state" style="padding:var(--space-8)">
-          <div class="empty-state-icon">🔎</div>
+          <div class="empty-state-icon"><?= app_icon('search') ?></div>
           <h3>No audits yet</h3>
           <p>Click "Run Audit" above to start your first GTM audit.</p>
         </div>
