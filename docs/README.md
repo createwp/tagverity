@@ -43,6 +43,10 @@ application as it is implemented.
 - [Natural-language MCP interface](NATURAL_LANGUAGE_MCP_INTERFACE.md) defines how
   ChatGPT, Claude Code, and other approved hosts can plan, preview, apply,
   verify, and publish tagging changes through controlled conversational tools.
+- [Competitive landscape and 2026 roadmap recommendations](COMPETITIVE_LANDSCAPE_AND_ROADMAP.md)
+  benchmarks the product against current Google Tag Manager, Tealium,
+  Segment, mParticle, RudderStack, and PostHog/Heap/Amplitude-style
+  point-and-click tagging, and proposes a prioritised roadmap.
 
 ## Maintenance Rule
 
