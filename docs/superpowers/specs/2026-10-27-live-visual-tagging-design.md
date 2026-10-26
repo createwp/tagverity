@@ -131,17 +131,45 @@ verified domain:
    activity. CORS on both the exchange and save endpoints is restricted
    to the one verified origin tied to that token.
 
-### 3. Domain eligibility, reusing existing data
+### 3. Domain eligibility — correction after verifying against real code
 
-The `domains` table already exists and already represents the
-client-owns-this-domain concept. Add a `mapper_snippet_detected_at`
-column, populated by a lightweight server-side check (reusing
-`SiteScanner`'s existing fetch capability — same bounded,
-private-network-protected HTTP fetch already used for scanning) that
-looks for the snippet's `<script>` tag in the page source. "Open live
-mapper" is only enabled for a domain once this check has passed, so the
-first thing a user sees if the snippet isn't detected yet is clear
-install instructions, not a broken button.
+**This section was revised after the worktree received the actual,
+previously-uncommitted application code.** The original draft assumed the
+`domains` table already represented a verified client-owns-this-domain
+concept and could be reused directly. Checked against the real codebase,
+that is not true: the `domains` table (and its `verified` column) is
+schema-only — `grep` across the whole app finds zero `SELECT`/`INSERT`/
+`UPDATE` statements against it outside of comments in `AuditEngine`, and
+`domain-map.php`, the page meant to host domain verification, is a stub.
+It is a leftover from the earlier Google-connection audit design, not
+something the onboarding/mapper flow uses.
+
+The onboarding/mapper flow's actual scope boundary today is different and
+self-reported: `api/save-element-mapping.php` only accepts a `page_url`
+that appears in the client's own latest completed `site_scans.scan_data`
+— there is no DNS/meta-tag ownership proof anywhere in the product today,
+for scanning or for mapping. The live mapper's domain eligibility should
+match that existing boundary rather than inventing a new one: eligibility
+is keyed off the root domain of the client's own `site_scans.root_url` /
+`onboarding_profiles.site_url`, not the dormant `domains` table.
+
+Add a `site_scans.mapper_snippet_detected_at` column (not on `domains`),
+populated by a lightweight server-side check — reusing `SiteScanner`'s
+existing bounded, private-network-protected fetch — that looks for the
+snippet's `<script>` tag on the scanned root URL. "Open live mapper" is
+only enabled once this check has passed, so the first thing a user sees
+if the snippet isn't detected yet is clear install instructions, not a
+broken button.
+
+**Open question for the product owner (genuinely theirs, not mine to
+decide):** should the live mapper require real domain-ownership
+verification (DNS TXT record or meta tag, the workflow `domain-map.php`
+was always meant to host but never got) as a new prerequisite before this
+ships, or is matching the product's existing self-reported trust level
+acceptable for now? Matching it doesn't lower security below where the
+product already sits (the scanner and static mapper already trust
+whatever URL a logged-in client-scoped user types in), but it does mean
+the live mapper inherits that same open item rather than closing it.
 
 ### 4. What is explicitly reused, unchanged
 
@@ -151,18 +179,29 @@ untouched. This feature only changes how a `payloadFor()`-shaped object
 reaches the server — the static preview's `postMessage` path and the new
 live snippet's `fetch()` path both end up calling (a shared,
 slightly-generalised version of) the same save logic
-`save-element-mapping.php` already has.
+`api/save-element-mapping.php` already has, including its existing
+validation rule that `page_url` must belong to the client's own latest
+completed site scan — for the live path, that check becomes "does the
+token's `site_scan_id` match, and does the page the snippet reports match
+that scan's root domain," the live-session equivalent of the same rule.
 
 ## Data Model (additions)
 
-- `domains.mapper_snippet_detected_at DATETIME NULL` — last time the
-  snippet was confirmed present via server-side check.
-- New table `mapper_sessions`: `id`, `client_id`, `domain_id`,
-  `created_by_user_id`, `token_hash` (never store the raw token),
-  `status ENUM('pending','exchanged','expired')`, `expires_at`,
-  `created_at`. Tokens are generated with `random_bytes`, hashed before
-  storage (consistent with how session/CSRF tokens are already handled
-  elsewhere in the codebase), single-use on exchange.
+- `site_scans.mapper_snippet_detected_at DATETIME NULL` — last time the
+  snippet was confirmed present via server-side check against the scan's
+  own `root_url`.
+- New table `mapper_sessions`: `id`, `client_id`, `site_scan_id` (the
+  scope boundary, matching how `save-element-mapping.php` already scopes
+  by the client's latest completed scan), `created_by_user_id`,
+  `token_hash` (never store the raw token), `status
+  ENUM('pending','exchanged','expired')`, `expires_at`, `created_at`.
+  Tokens are generated with `random_bytes`, hashed before storage
+  (consistent with how session/CSRF tokens are already handled elsewhere
+  in the codebase), single-use on exchange.
+- Both additions follow the existing numbered-migration convention in
+  `run-migrations.php` (the project's only migration mechanism — there is
+  no separate migrations directory or tooling) as migration 012, rather
+  than introducing a new schema-change process.
 
 ## What's Left to the Builder
 
