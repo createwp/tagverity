@@ -45,19 +45,24 @@ function require_auth(): array {
 /**
  * Require the user to hold at least the given role.
  *
- * Role hierarchy: owner > admin > member > viewer
+ * Role hierarchy: superadmin > owner > admin > member > viewer
  *
  * @param string $min_role  Minimum required role slug
  */
 function require_role(string $min_role = 'member'): void {
     $user  = require_auth();
-    $roles = ['viewer' => 0, 'member' => 1, 'admin' => 2, 'owner' => 3];
+    $roles = ['viewer' => 0, 'member' => 1, 'admin' => 2, 'owner' => 3, 'superadmin' => 4];
     $has   = $roles[$user['role']] ?? 0;
     $need  = $roles[$min_role]     ?? 0;
     if ($has < $need) {
         http_response_code(403);
         exit('Access denied.');
     }
+}
+
+function is_superadmin(?array $user = null): bool {
+    $user = $user ?? current_user();
+    return ($user['role'] ?? '') === 'superadmin';
 }
 
 /**

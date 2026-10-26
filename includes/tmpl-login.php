@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/icons.php'; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,8 +12,8 @@
   <div class="auth-card">
 
     <div class="auth-logo">
-      <div class="auth-logo-icon">🔍</div>
-      <span class="auth-logo-name">GTM Auditor</span>
+      <div class="auth-logo-icon"><?= app_icon('brand') ?></div>
+      <span class="auth-logo-name">TagVerity</span>
     </div>
 
     <h1 class="auth-title">Welcome back</h1>
@@ -20,7 +21,7 @@
 
     <?php if (!empty($error)): ?>
     <div class="alert alert-error" role="alert">
-      ⚠️ <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
+      <span class="alert-icon"><?= app_icon('alert') ?></span><span><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></span>
     </div>
     <?php endif; ?>
 

@@ -11,19 +11,29 @@ if (empty($_SESSION['csrf_token'])) {
 
 $error   = '';
 $success = '';
+$can_manage_account = in_array($user['role'], ['superadmin', 'owner', 'admin'], true);
+$allowed_tabs = $can_manage_account ? ['profile', 'account', 'security'] : ['profile', 'security'];
+$active_tab = in_array($_GET['tab'] ?? '', $allowed_tabs, true) ? $_GET['tab'] : 'profile';
 
 // ── Fetch account ──────────────────────────────────────────────────────────────
-$account_stmt = $pdo->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+$account_stmt = $pdo->prepare("SELECT id, name, type FROM accounts WHERE id = ? LIMIT 1");
 $account_stmt->execute([$user['account_id']]);
 $account = $account_stmt->fetch();
 
 // ── Handle profile update ─────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    if ($action === 'update_account') {
+        $active_tab = 'account';
+    } elseif ($action === 'change_password') {
+        $active_tab = 'security';
+    } else {
+        $active_tab = 'profile';
+    }
+
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
         $error = 'Invalid form submission.';
     } else {
-        $action = $_POST['action'] ?? '';
-
         if ($action === 'update_profile') {
             $name  = trim($_POST['name'] ?? '');
             $email = strtolower(trim($_POST['email'] ?? ''));
@@ -53,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($action === 'update_account') {
             // Only owner/admin can update account name
-            if (!in_array($user['role'], ['owner', 'admin'])) {
+            if (!$can_manage_account) {
                 $error = 'Permission denied.';
             } else {
                 $account_name = trim($_POST['account_name'] ?? '');
@@ -104,22 +114,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php include __DIR__ . '/includes/sidebar.php'; ?>
   <div class="main-content">
     <div class="page-header">
-      <div>
-        <h1 class="page-title">Account Settings</h1>
-        <p class="page-subtitle">Manage your profile and account configuration</p>
+      <div class="page-header-copy">
+        <h1 class="page-title">Account settings</h1>
+        <p class="page-subtitle">Manage your profile, account and security.</p>
       </div>
     </div>
-    <div class="page-body" style="max-width:640px">
+    <div class="page-body settings-page">
 
       <?php if ($error): ?>
-      <div class="alert alert-error" data-auto-dismiss>⚠️ <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+      <div class="alert alert-error" data-auto-dismiss><span class="alert-icon"><?= app_icon('alert') ?></span><span><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></span></div>
       <?php endif; ?>
       <?php if ($success): ?>
-      <div class="alert alert-success" data-auto-dismiss>✅ <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div>
+      <div class="alert alert-success" data-auto-dismiss><span class="alert-icon"><?= app_icon('check-circle') ?></span><span><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></span></div>
       <?php endif; ?>
 
-      <!-- Profile -->
-      <div class="card mb-6">
+      <nav class="settings-tabs" role="tablist" aria-label="Account settings">
+        <a href="?tab=profile" class="settings-tab <?= $active_tab === 'profile' ? 'active' : '' ?>" role="tab" id="settings-tab-profile" aria-controls="settings-panel-profile" aria-selected="<?= $active_tab === 'profile' ? 'true' : 'false' ?>" tabindex="<?= $active_tab === 'profile' ? '0' : '-1' ?>" data-settings-tab="profile"><?= app_icon('user') ?> Profile</a>
+        <?php if ($can_manage_account): ?>
+        <a href="?tab=account" class="settings-tab <?= $active_tab === 'account' ? 'active' : '' ?>" role="tab" id="settings-tab-account" aria-controls="settings-panel-account" aria-selected="<?= $active_tab === 'account' ? 'true' : 'false' ?>" tabindex="<?= $active_tab === 'account' ? '0' : '-1' ?>" data-settings-tab="account"><?= app_icon('building') ?> Account</a>
+        <?php endif; ?>
+        <a href="?tab=security" class="settings-tab <?= $active_tab === 'security' ? 'active' : '' ?>" role="tab" id="settings-tab-security" aria-controls="settings-panel-security" aria-selected="<?= $active_tab === 'security' ? 'true' : 'false' ?>" tabindex="<?= $active_tab === 'security' ? '0' : '-1' ?>" data-settings-tab="security"><?= app_icon('lock') ?> Security</a>
+      </nav>
+
+      <section class="settings-panel" id="settings-panel-profile" role="tabpanel" aria-labelledby="settings-tab-profile" data-settings-panel="profile" <?= $active_tab !== 'profile' ? 'hidden' : '' ?>>
+      <div class="card">
         <div class="card-header"><div class="card-title">Your Profile</div></div>
         <form method="POST">
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
@@ -142,10 +160,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <button type="submit" class="btn btn-primary">Save Profile</button>
         </form>
       </div>
+      </section>
 
-      <!-- Account name (owner/admin only) -->
-      <?php if (in_array($user['role'], ['owner', 'admin'])): ?>
-      <div class="card mb-6">
+      <?php if ($can_manage_account): ?>
+      <section class="settings-panel" id="settings-panel-account" role="tabpanel" aria-labelledby="settings-tab-account" data-settings-panel="account" <?= $active_tab !== 'account' ? 'hidden' : '' ?>>
+      <div class="card">
         <div class="card-header"><div class="card-title">Account</div></div>
         <form method="POST">
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
@@ -157,14 +176,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
           <div class="form-group">
             <label class="form-label">Account type</label>
-            <input class="form-input" type="text" value="<?= ucfirst($account['type']) ?>" readonly style="opacity:0.6;cursor:not-allowed">
+            <input class="form-input" type="text" value="<?= htmlspecialchars(ucfirst($account['type']), ENT_QUOTES, 'UTF-8') ?>" readonly style="opacity:0.6;cursor:not-allowed">
           </div>
           <button type="submit" class="btn btn-primary">Save Account</button>
         </form>
       </div>
+      </section>
       <?php endif; ?>
 
-      <!-- Change Password -->
+      <section class="settings-panel" id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" data-settings-panel="security" <?= $active_tab !== 'security' ? 'hidden' : '' ?>>
       <div class="card">
         <div class="card-header"><div class="card-title">Change Password</div></div>
         <form method="POST">
@@ -185,11 +205,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <button type="submit" class="btn btn-primary">Change Password</button>
         </form>
       </div>
+      </section>
 
     </div>
   </div>
 </div>
 <div id="toast-container"></div>
 <script src="<?= asset_url('assets/js/app.js') ?>"></script>
+<script src="<?= asset_url('assets/js/account-settings.js') ?>"></script>
 </body>
 </html>

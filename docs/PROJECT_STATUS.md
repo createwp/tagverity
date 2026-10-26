@@ -1,7 +1,7 @@
 # GTM Auditor Project Status
 
 **Document type:** Living implementation record
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-31
 **Product specification:**
 [`docs/superpowers/specs/2026-06-26-gtm-auditor-design.md`](superpowers/specs/2026-06-26-gtm-auditor-design.md)
 
@@ -74,7 +74,9 @@ The target product now includes:
   other approved clients can turn plain-language requirements into controlled
   blueprint, GTM workspace, verification, and publication workflows
 
-The current implementation does not yet provide these expanded capabilities.
+The current implementation now provides scan-led onboarding, visual mapping,
+a central tags-and-triggers workspace, and the first controlled release-review slice. External deployment remains
+locked until a concrete adapter and browser verification exist.
 
 ## Technical Architecture
 
@@ -136,6 +138,16 @@ Audit request
 | `api/trigger-audit.php` | Validates and queues manual audits |
 | `api/job-status.php` | Reports whether an account has running audits |
 | `api/oauth-callback.php` | Validates OAuth state and stores encrypted tokens |
+| `src/SiteScanner.php` | Bounded public-HTML discovery with private-network protection |
+| `src/OnboardingPlanner.php` | Questionnaire and draft measurement-plan generation |
+| `src/SitePreviewRenderer.php` | Sandboxed static preview sanitisation and element-selection bridge |
+| `src/ElementTemplateBuilder.php` | Deterministic event, trigger, and destination-tag draft generation |
+| `src/PublishReadiness.php` | Destination, consent, verification, and deployment readiness checks |
+| `src/TrackingWorkspace.php` | Merges proposed events, mapped triggers, saved event choices, and privacy policy |
+| `onboarding.php` | Scan, verification, and measurement-plan onboarding flow |
+| `element-mapper.php` | Visual element selection and intention-led trigger mapping |
+| `tracking-workspace.php` | Central event, parameter, trigger, destination, and PII-policy configuration |
+| `publish-tags.php` | Multi-select release review, approval, readiness, and publication gate |
 | `dashboard.php` | Client audit summary and manual audit trigger |
 | `audit-report.php` | Findings report grouped by severity and ownership |
 
@@ -150,6 +162,8 @@ Audit request
 - Logout and authenticated-page redirects
 - Database-backed login and registration rate limits
 - Profile, account-name, and password updates
+- Account-scoped `superadmin` role above owner/admin, while preserving client
+  tenant-ownership checks
 
 ### Client and Plan Foundations
 
@@ -179,6 +193,100 @@ Audit request
 - Dashboard health score, finding counts, audit history, and credit usage
 - Audit report filtering, severity summaries, recommendations, evidence, and
   plan-gated developer notes
+
+### Scan-led Onboarding MVP
+
+- Authenticated, client-scoped tracking setup page
+- Bounded public-site scan of up to eight pages, with redirect, response-size,
+  port, timeout, and private-network restrictions
+- Basic `robots.txt` exclusions and sitemap discovery
+- Detection of likely services, products, forms, multi-step forms, search,
+  filters, SPA signals, ecommerce signals, analytics tags, and consent tools
+- Canonical final-URL and form-fingerprint deduplication so redirects, sitemap
+  variants, and repeated homepage URLs do not inflate page or form counts
+- Service and product names restricted to relevant schema, meaningful
+  breadcrumbs, or page headings rather than unrelated FAQ and organisation names
+- Visible scan coverage and limitations instead of presenting a partial scan as
+  complete knowledge of the site
+- A generated verification questionnaire for business type, goals,
+  destinations, offer names, product groups, form names, and ecommerce scope
+- Stable draft event names enriched with page, form, service, product, route,
+  step, field, and element parameters
+- Automatic draft coverage for form view, start, field interaction,
+  abandonment, and verified submission without collecting field values
+- GA4-compatible ecommerce event recommendations when ecommerce is selected
+- Server-side answer validation, tenant checks, CSRF protection, rate limiting,
+  and explicit draft-only status
+
+### Visual Element Mapping MVP
+
+- Sandboxed static previews for pages captured by the latest site scan
+- Removal of source scripts, event handlers, embedded frames, refreshes,
+  executable URLs, and external form actions before preview rendering
+- Browser-side hover and click selection with generated CSS selectors that
+  prefer stable IDs and testing attributes
+- Page-only or site-wide trigger scope, allowing one stable selector to cover
+  repeated navigation and CTA elements without duplicating tags per page
+- Plain-language questions for the element name, measurement goal, tracking
+  intention, and optional ecommerce or search data key
+- Deterministic recommendations for click, visibility, form lifecycle,
+  ecommerce-value, and site-search triggers
+- Reusable draft event, trigger, and destination-tag templates for GA4,
+  PostHog, Google Ads, Meta, or a generic data layer
+- Editing of existing mappings without automatic tag creation or publication
+- Preview requests restricted to pages in the client's latest scan
+- Full-screen mapping workspace with the website preview on the left, the tag
+  panel on the right, and saved draft tags beneath the preview
+- Capture of stable element IDs/classes plus form ID, classes, name, selector,
+  field name/type, autocomplete hint, and associated label
+
+### Controlled Tag Releases MVP
+
+- Multi-select of draft mappings so unselected mappings remain outside the release
+- Event-level selection within each mapping, including individual form lifecycle
+  events, so unchecked events remain drafts even when other events from the same
+  visual tag enter a release
+- Editable release-time event names with lowercase GA4-compatible validation;
+  immutable snapshots preserve both the recommended source name and approved name
+- Every scan-recommended measurement-plan event is generated as an individually
+  selectable release item with a matching page, click, visibility, form,
+  ecommerce, search, or result-interaction trigger recipe and destination tags
+- Immutable release snapshots with client-scoped version numbers and draft or
+  approved states
+- Readiness checks for browser verification, destinations, consent, GTM
+  permissions, and deployment-adapter availability
+- Publication is blocked and never labelled live while any required check or
+  real external adapter is absent
+- Light-only, Material-inspired global palette with Roboto, Google blue, white
+  surfaces, accessible status colours, and material-style elevation
+
+### Central Tags and Triggers Workspace
+
+- One source-of-truth page connects onboarding proposals, visual mappings, and
+  release review through a four-step happy path
+- Each event can be included or excluded, renamed, and limited to an explicit
+  subset of its available parameters before release review
+- Tag rows are compact accordions with one editor open at a time; include or
+  exclude remains available directly from the collapsed summary
+- Single click and visibility mappings keep the user's mapper name as the
+  analytics-safe custom event name while inheriting a reviewed system parameter
+  template; explicitly saved names are never replaced by a later recommendation
+- Compatible mapped elements can switch between click and visibility triggers
+  without losing the custom event name; the parameter schema and trigger logic
+  change together
+- Trigger scope, selector, verification requirement, and destination tag
+  templates are visible beside the event instead of being hidden in the mapper
+- Status language distinguishes `Proposed—not active`, `Configured—not live`,
+  and release-level `Approved—not live`
+- Raw form values are always disabled; hashed email, phone, first name, and last
+  name are separately opt-in and default off
+- A browser-only SHA-256 demonstration explains normalisation and hashing without
+  transmitting or saving the example value
+- Mapper deep links open an existing mapping and provide a clear return to the
+  central workspace; saved choices preselect release review
+- Mapped tags can be removed through a confirmed soft-archive action; prior
+  release snapshots remain immutable and releases containing an archived tag are
+  blocked from later publication
 
 ### Current Audit Rules
 
@@ -213,14 +321,23 @@ The implemented path is:
 Register or log in
   -> account and default client
   -> dashboard
-  -> connect Google account
-  -> trigger an audit
-  -> cron processes the queued job
-  -> dashboard and audit report display results
+  -> Set up tracking
+  -> scan a public website sample
+  -> verify the detected business meaning
+  -> review a draft measurement plan
+  -> select page elements in a safe visual preview
+  -> save reusable element mappings
+  -> configure events, parameters, triggers, destinations, and privacy centrally
+  -> review selected events for a versioned release
+  -> save or approve the release
+  -> resolve readiness blockers before external publication
 ```
 
-The screens exist for most of this flow, but the Google discovery and audit data
-hydration steps are not yet complete, so the full path is not operational.
+The earlier Google connection and audit path still exists, but its discovery and
+data-hydration steps remain incomplete. Onboarding and visual mapping create
+draft plans and templates. The release workflow can version and approve selected
+drafts, but it does not yet observe live SPA behaviour, create platform tags, or
+publish externally.
 
 ## Incomplete or Stubbed Work
 
@@ -242,6 +359,12 @@ hydration steps are not yet complete, so the full path is not operational.
 
 ### Later Phases
 
+- Tag, trigger, variable, and destination template registries
+- Live browser and SPA observation for routes, dynamic forms, field
+  abandonment, and successful completion signals
+- Ecommerce visual variable mapping and native platform connectors
+- Consent-management, server-side collection, identity, CAPI, CRM, and email
+  preference integrations
 - Headless crawl service and implementation-category audit checks
 - Redirect and SPA behaviour analysis
 - Scheduled monitoring and alert delivery
@@ -291,19 +414,45 @@ The project expects these rules to remain non-negotiable:
 
 ## Local Development Snapshot
 
-As of 2026-07-27:
+As of 2026-07-30:
 
 - Project URL: `http://localhost/gtm-auditor/`
 - Apache runtime: PHP 8.1.0
 - The system PATH points to PHP 7.4.26; validation commands must explicitly use
   `C:\wamp64\bin\php\php8.1.0\php.exe` or update the shell PATH.
-- All 28 PHP files pass syntax validation under PHP 8.1.
+- All PHP files pass syntax validation under the configured local PHP runtime.
 - Composer dependencies are installed.
-- MySQL is reachable and all 20 schema tables exist.
+- MySQL is reachable and the two onboarding tables were added successfully;
+  migration 002 was run twice to confirm idempotency.
+- Migration 003 adds saved visual element mappings and was also run twice to
+  confirm idempotency.
+- Migration 004 adds the account-scoped `superadmin` role and was run twice to
+  confirm idempotency.
+- Migration 005 adds immutable, versioned tag releases and was run twice to
+  confirm idempotency.
+- Migration 006 adds page or global trigger scope and was run twice to confirm
+  idempotency on the local MySQL version.
+- Migrations 007 and 008 add per-event configuration and a client privacy policy;
+  both were run twice to confirm idempotency.
+- Migration 009 adds a compatible click/visibility trigger override and was run
+  twice to confirm idempotency.
+- The release APIs were exercised through Apache: an approved release was
+  created and its publication attempt correctly returned HTTP 409 with four
+  actionable blockers; the temporary test release was removed afterward.
+- `tests/SiteScannerRegressionTest.php` covers duplicate forms, canonical URL
+  variants, service-name filtering, product-name filtering, and form fields.
+- `tests/ElementTemplateBuilderTest.php` covers page-restricted and site-wide
+  trigger generation, runtime page URLs, and global verification requirements.
+- `tests/ReleaseEventBuilderTest.php` covers scan-recommended page, click, and
+  form trigger generation, recommendation selection, per-event filtering,
+  approved-name overrides, destination updates, parameter opt-out, and validation.
+- `tests/TrackingWorkspaceSmokeTest.php` loads the local schema and verifies
+  saved configuration merging while raw PII remains disabled.
 - The local database contains four plans and one account/user/client, with no
   Google connections, audit jobs, or findings.
 - Login and registration pages render through Apache.
-- There is no automated test suite.
+- Focused PHP regression and smoke tests cover the new onboarding and tracking
+  workflow services; a full end-to-end browser suite is still pending.
 
 ## Repository Snapshot
 
@@ -342,6 +491,13 @@ When implementation work changes the project:
 | 2026-07-28 | Confirmed that GTM writes are executed through the Google Tag Manager API; MCP may expose approved AI-facing wrappers but remains optional and never receives or passes through customer Google tokens. |
 | 2026-07-28 | Adopted one host-neutral remote MCP server for plain-language tagging through ChatGPT, Claude Code, and compatible clients, with separate preview, apply, version, verify, and publish actions. |
 | 2026-07-29 | Selected `TagVerity` as the customer-facing working name, subject to domain and trademark clearance; retained `GTM Auditor` as the technical repository name for now. |
+| 2026-07-30 | Chose scan-led onboarding as the first tagging-platform vertical slice: preserve scan evidence, ask only for business verification, and create a draft measurement plan without automatic publication. |
+| 2026-07-30 | Added a sandboxed static visual mapper as the next low-cost slice; live scripts remain disabled and every generated selector and template requires later browser verification. |
+| 2026-07-30 | Added an account-scoped superadmin role without cross-tenant bypass; platform-wide tenant impersonation remains a separate audited capability. |
+| 2026-07-30 | Separated approval from publication: approval freezes a release snapshot, while publication requires verification, consent, destination, permission, and adapter checks. |
+| 2026-07-30 | Adopted a light-only Material-inspired interface and full-screen visual mapper to prioritise website preview space. |
+| 2026-07-31 | Made Tags & triggers the central source of truth between proposal, visual mapping, privacy configuration, and controlled release review. |
+| 2026-07-31 | Adopted a unified stroke-SVG icon family and a sapphire, deep-navy, orange-accent, cool-neutral SaaS palette based on the approved visual references. |
 
 ## Change Log
 
@@ -386,3 +542,90 @@ When implementation work changes the project:
 - Connected the local repository to `https://github.com/createwp/tagverity.git`
   as `origin` and prepared the reviewed application and documentation baseline
   for publication.
+
+### 2026-07-30
+
+- Added the scan-led onboarding migration, public-site scanner, verification
+  questionnaire, stable-event measurement-plan generator, protected APIs,
+  responsive setup page, and sidebar entry.
+- Added explicit scan coverage, privacy boundaries, private-network protection,
+  and draft-only publication status.
+- Added safe visual page previews, element selection, intention-led trigger
+  recommendations, saved mappings, and GA4, PostHog, Google Ads, Meta, and
+  generic data-layer tag drafts.
+- Added migration 004 and role handling for an account-scoped superadmin login.
+- Added migration 005, tag release APIs, multi-select review and approval,
+  publication blockers, release history, and GTM write/version/publish scopes.
+- Converted the shared interface to a light Material-inspired palette and added
+  the full-screen mapper, right-side tag panel, bottom draft tray, and richer
+  form/field identifier capture.
+- Fixed duplicate page/form scan results and filtered service/product discovery
+  to exclude FAQ, breadcrumb-home, and organisation-name noise.
+- Added page/site-wide visual trigger scope with multi-page verification
+  blockers for global selectors.
+- Added event-level release selection and editing, including a selectable base
+  `page_view`; release snapshots keep unchecked events out and preserve the
+  original recommended name for audit history.
+
+### 2026-07-31
+
+- Added the central Tags & triggers workspace, event include/exclude controls,
+  editable names, parameter selection, visible trigger and destination details,
+  and unambiguous not-live lifecycle labels.
+- Converted tag editors to compact single-open accordions and preserved mapper
+  names as custom event names while inheriting parameters from compatible system
+  events; click and visibility templates can be switched in place.
+- Added raw-PII blocking, explicit hashed-identifier opt-in, selected field
+  policy, browser-only SHA-256 education, and privacy snapshots in releases.
+- Connected onboarding, visual mapping, and release review with return links,
+  mapper deep links, and shared saved configuration.
+- Replaced emoji and text-symbol interface icons with a shared dependency-free
+  SVG system across navigation, authentication, dashboards, alerts, empty states,
+  connections, clients, and audit reports.
+- Refined the light SaaS visual system around sapphire actions, deep navy
+  grounding, restrained orange accents, cool neutral surfaces, softer borders,
+  modern elevation, and an accessible in-app confirmation modal.
+- Added confirmed soft deletion for mapped tags and a publication guard that
+  prevents deleted tags from being reintroduced through an older release.
+- Made Dashboard, Setup tracking, Tags & triggers, Element mapper, and Releases
+  fluid-width so their content uses the available desktop workspace; retained
+  readable side panels and responsive single-column layouts at narrower widths.
+- Converted Setup tracking into a four-stage, single-panel wizard with clickable
+  completed steps, Previous/Continue controls, a dedicated business-meaning
+  review, and a visual final handoff to Tags & triggers instead of a long event
+  dictionary.
+- Simplified Tags & triggers into a non-linear workspace by removing its large
+  process stepper and status guide, using compact counters and hover/focus status
+  help, and moving SHA-256 examples into a field-aware browser-only lightbox.
+- Changed release review to show only new or modified tracking compared with the
+  latest approved/published version, and made visual preview plus live trigger
+  verification an explicit pre-publication stage.
+- Added a versioned identifier processor used by both the browser demonstration
+  and event enrichment contract: allowlisted email and names are trimmed and
+  lowercased, phones require E.164, Google destinations apply Gmail-specific
+  rules, consent is checked before processing, only SHA-256 outputs enter event
+  user-data payloads, and releases store processing rules rather than values.
+- Extended that contract to actual browser event objects: common form-field
+  aliases resolve to canonical email, phone, full-name, first-name, and
+  last-name fields; names collapse repeated whitespace; raw identifier keys are
+  removed recursively; and only consented, allowlisted hashes can enter the
+  destination-ready `user_data` payload. External delivery remains disabled
+  until a verified collector or deployment adapter is implemented.
+- Added one shared responsive application shell for every authenticated page:
+  a fixed mobile header, accessible hamburger control, focus-managed slide-out
+  navigation, backdrop and Escape-key dismissal, scroll locking, 44-pixel touch
+  targets, stacked cards and actions, horizontally scrollable tables and tabs,
+  and reduced-motion support.
+- Standardised page headers around one shared gutter, title/subtitle hierarchy,
+  compact action area, sentence-case labels, and client context in the subtitle.
+  Removed the duplicate Tags & triggers body heading and status legend, then
+  combined its filters and three useful counts into one compact toolbar.
+- Aligned the Account settings tabs, alerts, and active form card to one shared
+  constrained content column so their left and right edges remain consistent.
+- Expanded Tags & triggers to show every event recommended by the measurement
+  plan in one continuous list with mapped events, using inline source labels,
+  source/tag/trigger filters, search, page-size controls, pagination, compact
+  add/remove and edit actions, trigger coverage, and release-ready platform tags.
+- Separated trigger type from delivery destination throughout the workspace:
+  element clicks remain click triggers, a missing destination is shown as Not
+  assigned instead of Data layer, and releases with unassigned delivery are blocked.

@@ -2,6 +2,7 @@
 // ─── audit-report.php — Full audit findings view ─────────────────────────────
 require_once __DIR__ . '/includes/permissions.php';
 require_once __DIR__ . '/includes/plans.php';
+require_once __DIR__ . '/includes/icons.php';
 $user        = require_auth();
 $active_page = 'audits';
 
@@ -45,17 +46,17 @@ function scoreLabel(int $s): string {
 }
 
 $category_labels = [
-    'container_health' => ['🏷️', 'Container Health'],
-    'trigger_quality'  => ['⚡', 'Trigger & Variable Quality'],
-    'data_quality'     => ['📊', 'GA4 Data Quality'],
-    'implementation'   => ['🌐', 'Implementation'],
+    'container_health' => ['tags', 'Container Health'],
+    'trigger_quality'  => ['activity', 'Trigger & Variable Quality'],
+    'data_quality'     => ['dashboard', 'GA4 Data Quality'],
+    'implementation'   => ['globe', 'Implementation'],
 ];
 $fix_owner_labels = [
-    'gtm'       => ['🏷️', 'GTM'],
-    'developer' => ['💻', 'Developer'],
-    'ga4_admin' => ['📊', 'GA4 Admin'],
-    'hosting'   => ['🖥️', 'Hosting / DNS'],
-    'multiple'  => ['🤝', 'Multiple Teams'],
+    'gtm'       => ['tags', 'GTM'],
+    'developer' => ['code', 'Developer'],
+    'ga4_admin' => ['dashboard', 'GA4 Admin'],
+    'hosting'   => ['server', 'Hosting / DNS'],
+    'multiple'  => ['handshake', 'Multiple Teams'],
 ];
 ?>
 <!DOCTYPE html>
@@ -110,18 +111,18 @@ $fix_owner_labels = [
 
     <!-- Header -->
     <div class="page-header">
-      <div>
-        <h1 class="page-title">Audit Report</h1>
+      <div class="page-header-copy">
+        <h1 class="page-title">Audit report</h1>
         <p class="page-subtitle">
           <?= htmlspecialchars($client_name, ENT_QUOTES, 'UTF-8') ?> ·
           <?= $job['completed_at'] ? date('d M Y, H:i', strtotime($job['completed_at'])) : 'In progress' ?> ·
           #<?= $audit_job_id ?>
         </p>
       </div>
-      <div class="flex gap-3">
-        <a href="dashboard.php" class="btn btn-ghost btn-sm">← Dashboard</a>
+      <div class="page-header-actions">
+        <a href="dashboard.php" class="btn btn-ghost btn-sm"><?= app_icon('arrow-left') ?> Dashboard</a>
         <?php if (has_feature('developer_notes')): ?>
-        <a href="#" class="btn btn-secondary btn-sm">⬇ Export PDF</a>
+        <a href="#" class="btn btn-secondary btn-sm"><?= app_icon('download') ?> Export PDF</a>
         <?php endif; ?>
       </div>
     </div>
@@ -155,7 +156,7 @@ $fix_owner_labels = [
 
         <!-- Critical -->
         <div class="stat-card">
-          <div class="stat-icon critical">🔴</div>
+          <div class="stat-icon critical"><?= app_icon('alert') ?></div>
           <div>
             <div class="stat-value" style="color:var(--critical)"><?= $counts['critical'] ?></div>
             <div class="stat-label">Critical findings</div>
@@ -164,7 +165,7 @@ $fix_owner_labels = [
 
         <!-- Warning -->
         <div class="stat-card">
-          <div class="stat-icon warning">🟡</div>
+          <div class="stat-icon warning"><?= app_icon('alert') ?></div>
           <div>
             <div class="stat-value" style="color:var(--warning)"><?= $counts['warning'] ?></div>
             <div class="stat-label">Warnings</div>
@@ -173,7 +174,7 @@ $fix_owner_labels = [
 
         <!-- Info -->
         <div class="stat-card">
-          <div class="stat-icon info">🔵</div>
+          <div class="stat-icon info"><?= app_icon('info') ?></div>
           <div>
             <div class="stat-value" style="color:var(--info)"><?= $counts['info'] ?></div>
             <div class="stat-label">Info / Best practices</div>
@@ -187,11 +188,11 @@ $fix_owner_labels = [
         <div class="card-header"><div class="card-title">Who needs to act?</div></div>
         <div style="display:flex;gap:var(--space-3);flex-wrap:wrap">
           <?php foreach ($by_owner as $owner => $cnt):
-            [$icon, $label] = $fix_owner_labels[$owner] ?? ['🔧', ucfirst($owner)];
+            [$icon, $label] = $fix_owner_labels[$owner] ?? ['wrench', ucfirst($owner)];
             $badgeClass = 'badge-' . str_replace('_', '-', $owner);
           ?>
           <div style="display:flex;align-items:center;gap:var(--space-3);background:var(--bg-elevated);padding:var(--space-3) var(--space-4);border-radius:var(--radius-md);flex:1;min-width:140px">
-            <span style="font-size:1.3rem"><?= $icon ?></span>
+            <span class="feature-list-icon"><?= app_icon($icon) ?></span>
             <div>
               <div style="font-weight:700;font-size:1.1rem"><?= $cnt ?></div>
               <div class="text-xs text-muted"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></div>
@@ -206,16 +207,16 @@ $fix_owner_labels = [
       <?php if (!empty($findings)): ?>
       <div class="filter-bar">
         <button class="btn btn-secondary filter-btn active" data-filter="all">All (<?= count($findings) ?>)</button>
-        <?php if ($counts['critical']): ?><button class="btn btn-secondary filter-btn" data-filter="critical" style="border-color:var(--critical-border)">🔴 Critical (<?= $counts['critical'] ?>)</button><?php endif; ?>
-        <?php if ($counts['warning']): ?><button class="btn btn-secondary filter-btn" data-filter="warning" style="border-color:var(--warning-border)">🟡 Warning (<?= $counts['warning'] ?>)</button><?php endif; ?>
-        <?php if ($counts['info']): ?><button class="btn btn-secondary filter-btn" data-filter="info" style="border-color:var(--info-border)">🔵 Info (<?= $counts['info'] ?>)</button><?php endif; ?>
+        <?php if ($counts['critical']): ?><button class="btn btn-secondary filter-btn" data-filter="critical" style="border-color:var(--critical-border)"><span class="severity-dot critical"></span>Critical (<?= $counts['critical'] ?>)</button><?php endif; ?>
+        <?php if ($counts['warning']): ?><button class="btn btn-secondary filter-btn" data-filter="warning" style="border-color:var(--warning-border)"><span class="severity-dot warning"></span>Warning (<?= $counts['warning'] ?>)</button><?php endif; ?>
+        <?php if ($counts['info']): ?><button class="btn btn-secondary filter-btn" data-filter="info" style="border-color:var(--info-border)"><span class="severity-dot info"></span>Info (<?= $counts['info'] ?>)</button><?php endif; ?>
       </div>
       <?php endif; ?>
 
       <!-- ── Findings by Category ───────────────────────────────────────────── -->
       <?php if (empty($findings)): ?>
       <div class="empty-state">
-        <div class="empty-state-icon">✅</div>
+        <div class="empty-state-icon"><?= app_icon('check-circle') ?></div>
         <h3>No findings — looking great!</h3>
         <p>This audit found no issues with your GTM or GA4 implementation.</p>
       </div>
@@ -226,25 +227,25 @@ $fix_owner_labels = [
 
       <div class="mb-6">
         <h2 style="font-size:0.9rem;font-weight:700;margin-bottom:var(--space-3);display:flex;align-items:center;gap:var(--space-2);color:var(--text-secondary)">
-          <?= $cat_icon ?> <?= htmlspecialchars($cat_label, ENT_QUOTES, 'UTF-8') ?>
+          <span class="section-heading-icon"><?= app_icon($cat_icon) ?></span><?= htmlspecialchars($cat_label, ENT_QUOTES, 'UTF-8') ?>
           <span class="badge badge-neutral"><?= count($grouped[$cat_key]) ?></span>
         </h2>
 
         <?php foreach ($grouped[$cat_key] as $f):
           $sev = htmlspecialchars($f['severity'], ENT_QUOTES, 'UTF-8');
           $owner = htmlspecialchars($f['fix_owner'], ENT_QUOTES, 'UTF-8');
-          [$oIcon, $oLabel] = $fix_owner_labels[$f['fix_owner']] ?? ['🔧', ucfirst($f['fix_owner'])];
+          [$oIcon, $oLabel] = $fix_owner_labels[$f['fix_owner']] ?? ['wrench', ucfirst($f['fix_owner'])];
         ?>
         <div class="finding-card <?= $sev ?>" data-severity="<?= $sev ?>">
           <div class="flex items-center gap-2 mb-2" style="flex-wrap:wrap">
             <span class="badge badge-<?= $sev ?>"><?= strtoupper($sev) ?></span>
-            <span class="badge badge-<?= str_replace('_', '-', $owner) ?>"><?= $oIcon ?> <?= htmlspecialchars($oLabel, ENT_QUOTES, 'UTF-8') ?></span>
+            <span class="badge badge-<?= str_replace('_', '-', $owner) ?>"><?= app_icon($oIcon) ?> <?= htmlspecialchars($oLabel, ENT_QUOTES, 'UTF-8') ?></span>
           </div>
           <div class="finding-title"><?= htmlspecialchars($f['title'], ENT_QUOTES, 'UTF-8') ?></div>
           <div class="finding-description"><?= htmlspecialchars($f['description'], ENT_QUOTES, 'UTF-8') ?></div>
 
           <div class="finding-rec">
-            <strong>✅ Recommendation:</strong>
+            <strong><?= app_icon('check') ?> Recommendation:</strong>
             <?= htmlspecialchars($f['recommendation'], ENT_QUOTES, 'UTF-8') ?>
           </div>
 
@@ -257,13 +258,13 @@ $fix_owner_labels = [
 
           <?php if (!empty($f['developer_notes']) && has_feature('developer_notes')): ?>
           <div class="dev-notes">
-            <strong>💻 Developer Notes</strong>
+            <strong><?= app_icon('code') ?> Developer Notes</strong>
             <?= htmlspecialchars($f['developer_notes'], ENT_QUOTES, 'UTF-8') ?>
           </div>
           <?php elseif (!empty($f['developer_notes']) && !has_feature('developer_notes')): ?>
           <div class="dev-notes" style="opacity:0.6">
-            <strong>💻 Developer Notes</strong>
-            <a href="billing.php" style="color:var(--brand-primary)">🚀 Upgrade to Pro to see technical fix instructions</a>
+            <strong><?= app_icon('code') ?> Developer Notes</strong>
+            <a href="billing.php" style="color:var(--brand-primary)">Upgrade to Pro to see technical fix instructions</a>
           </div>
           <?php endif; ?>
         </div>

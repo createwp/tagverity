@@ -1,8 +1,71 @@
 # Onboarding Wizard and Tagging Partner
 
 **Document type:** Living product and acceptance requirements
-**Last updated:** 2026-07-28
-**Status:** Direction agreed; implementation not started
+**Last updated:** 2026-07-30
+**Status:** First scan-led MVP slice implemented; broader workflow remains planned
+
+## Implemented MVP Slice
+
+The first working slice follows a shorter, evidence-first path:
+
+```text
+Website URL
+  -> bounded public HTML scan
+  -> visible coverage and detected site model
+  -> business verification questionnaire
+  -> draft measurement plan
+```
+
+It detects likely services, products, forms, multi-step forms, search, filters,
+SPA and ecommerce signals, analytics tools, and consent technology. The user
+then confirms the business model, goals, destination types, offer names,
+product groups, form names, and ecommerce scope.
+
+The generated plan uses stable event names enriched by parameters. It includes
+page views, named element clicks and visibility, form view/start/field
+interaction/abandonment/submission, GA4-compatible ecommerce events when
+selected, and search/filter/sort/view-layout events when detected. It is always
+stored as `draft_needs_review`; it cannot publish tags.
+
+The second working slice adds a sandboxed static page preview. A user can select
+an element, name it in business language, state whether the goal is behavioural
+analysis, marketing conversion, experience improvement, or data quality, and
+choose click, visibility, form lifecycle, ecommerce-value, or search tracking.
+TagVerity saves the generated selector together with reusable event, trigger,
+and destination-tag drafts.
+
+The third working slice adds a review-and-publish boundary. Users can select
+only the draft tags that belong in a release, give the release a business name,
+save it as a draft, or approve an immutable version. Unselected mappings remain
+drafts. Approval is explicitly not publication: TagVerity blocks deployment
+until browser verification, destination credentials, consent policy, platform
+permissions, and a concrete external deployment adapter are all ready.
+
+The visual mapper can expand to a full-screen workspace. The safe website
+preview occupies the main area, the tag configuration panel stays on the right,
+and saved draft tags remain visible beneath the preview. Element selection
+captures stable IDs and useful classes, along with the nearest form's ID,
+classes, name, and selector and the selected field's name, type, label, and
+autocomplete hint.
+
+Each visual mapping can be restricted to its selected page or applied site-wide.
+Site-wide scope is intended for repeated headers, navigation, calls to action,
+and shared components. It creates one trigger using the stable selector and the
+runtime page URL, but remains blocked from publication until it has been tested
+for missing and unintended matches across several sampled pages.
+
+Release review operates at event level rather than forcing an entire mapping
+into production. Every scan-recommended measurement-plan event and every
+generated mapping event have an individual checkbox and editable approved event
+name. Unchecked events stay as drafts. Edited names must remain lowercase, begin with a letter, use only
+letters, numbers, and underscores, and fit within 40 characters. The immutable
+release snapshot stores the recommended source name alongside the approved name.
+
+The preview removes source scripts, event handlers, embedded frames, refreshes,
+executable URLs, and external form actions. It can only render pages from the
+client's latest scan. Runtime SPA observation, live field-abandonment
+collection, consent enforcement, server-side routing, destination credentials,
+and confirmed external tag publication remain subsequent stages.
 
 ## Objective
 

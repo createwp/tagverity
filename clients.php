@@ -83,27 +83,27 @@ function scoreColor(int $score): string {
   <div class="main-content">
 
     <div class="page-header">
-      <div>
+      <div class="page-header-copy">
         <h1 class="page-title">Clients</h1>
         <p class="page-subtitle"><?= count($clients) ?> client<?= count($clients) !== 1 ? 's' : '' ?> in your account</p>
       </div>
-      <button class="btn btn-primary" onclick="document.getElementById('create-client-modal').style.display='flex'" id="new-client-btn">
-        + New Client
-      </button>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick="document.getElementById('create-client-modal').style.display='flex'" id="new-client-btn">+ New client</button>
+      </div>
     </div>
 
     <div class="page-body">
 
       <?php if ($error): ?>
-      <div class="alert alert-error" data-auto-dismiss>⚠️ <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+      <div class="alert alert-error" data-auto-dismiss><span class="alert-icon"><?= app_icon('alert') ?></span><span><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></span></div>
       <?php endif; ?>
       <?php if ($success): ?>
-      <div class="alert alert-success" data-auto-dismiss>✅ <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div>
+      <div class="alert alert-success" data-auto-dismiss><span class="alert-icon"><?= app_icon('check-circle') ?></span><span><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></span></div>
       <?php endif; ?>
 
       <?php if (empty($clients)): ?>
       <div class="empty-state">
-        <div class="empty-state-icon">👥</div>
+        <div class="empty-state-icon"><?= app_icon('users') ?></div>
         <h3>No clients yet</h3>
         <p>Create your first client to start running GTM audits.</p>
         <button class="btn btn-primary mt-4" onclick="document.getElementById('create-client-modal').style.display='flex'">
@@ -129,7 +129,7 @@ function scoreColor(int $score): string {
           </div>
           <div class="flex gap-2" style="margin-top:auto">
             <a href="dashboard.php?client_id=<?= (int)$c['id'] ?>" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center">Dashboard</a>
-            <a href="domain-map.php?client_id=<?= (int)$c['id'] ?>" class="btn btn-ghost btn-sm">🌐</a>
+            <a href="domain-map.php?client_id=<?= (int)$c['id'] ?>" class="btn btn-ghost btn-sm" aria-label="View domain map" title="View domain map"><?= app_icon('globe') ?></a>
           </div>
         </div>
         <?php endforeach; ?>

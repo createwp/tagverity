@@ -45,6 +45,12 @@ define('MAIL_FROM_NAME',    $_ENV['MAIL_FROM_NAME']    ?? APP_NAME);
 // ─── Headless Crawl Microservice (Phase 2) ────────────────────────────────────
 define('CRAWL_SERVICE_URL',    $_ENV['CRAWL_SERVICE_URL']    ?? '');
 define('CRAWL_SERVICE_SECRET', $_ENV['CRAWL_SERVICE_SECRET'] ?? '');
+$site_scan_ca_bundle = $_ENV['SITE_SCAN_CA_BUNDLE'] ?? '';
+if ($site_scan_ca_bundle === '' && PHP_OS_FAMILY === 'Windows' && ini_get('curl.cainfo') === '') {
+    $bundled_ca = APP_ROOT . '/vendor/stripe/stripe-php/data/ca-certificates.crt';
+    $site_scan_ca_bundle = is_file($bundled_ca) ? $bundled_ca : '';
+}
+define('SITE_SCAN_CA_BUNDLE', $site_scan_ca_bundle);
 
 // ─── Developer tooling ────────────────────────────────────────────────────────
 define('DEVELOPER_MIGRATION_KEY', $_ENV['DEVELOPER_MIGRATION_KEY'] ?? '');
