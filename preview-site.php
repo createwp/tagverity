@@ -41,7 +41,7 @@ if ($requestedUrl === '' || !isset($allowedPages[$pageKey])) {
 header('Content-Type: text/html; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:; font-src https: http: data:; media-src https: http:; script-src 'unsafe-inline'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'self'; base-uri https: http:");
+header("Content-Security-Policy: sandbox allow-scripts; default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:; font-src https: http: data:; media-src https: http:; script-src 'unsafe-inline'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'self'; base-uri https: http:");
 
 try {
     $scanner = new SiteScanner(1, 1000000, 6, SITE_SCAN_CA_BUNDLE);

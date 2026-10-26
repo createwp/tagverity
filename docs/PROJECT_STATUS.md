@@ -392,6 +392,17 @@ reliable:
   project working conventions require application modals.
 - Some navigation and feature interfaces were built ahead of their backing
   endpoints.
+- `SitePreviewRenderer`'s sanitiser relies on libxml's HTML parser/serialiser,
+  which does not always agree with a real browser's HTML5 parser on the same
+  markup. This parser-differential class of bug (mutation XSS) means
+  sanitised-looking output can still execute script once re-parsed by a
+  browser. `preview-site.php`'s CSP now adds `sandbox allow-scripts` as a
+  mitigation (opaque, cookie-less origin if script does execute), but the
+  sanitiser itself should be replaced with an HTML5-aware sanitiser (e.g.
+  HTML Purifier) rather than the current removeNodes/attribute-allowlist
+  approach. Worth resolving before or alongside the live visual tagging work
+  in `docs/superpowers/specs/2026-10-27-live-visual-tagging-design.md`, since
+  that work extends this same code family.
 
 This is an implementation-status record, not a full security or code review.
 Additional findings should be recorded when formal review begins.
