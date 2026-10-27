@@ -17,7 +17,7 @@ $mappingId = (int)($input['mapping_id'] ?? 0);
 assert_client_access($clientId);
 
 $stmt = db()->prepare(
-    "SELECT op.latest_scan_id, op.measurement_plan, ss.scan_data
+    "SELECT op.latest_scan_id, op.measurement_plan, ss.root_url
      FROM onboarding_profiles op
      JOIN site_scans ss ON ss.id = op.latest_scan_id AND ss.client_id = op.client_id
      WHERE op.client_id = ? AND op.status = 'plan_ready' AND ss.status = 'complete'
@@ -29,15 +29,28 @@ if (!$profile) {
     api_respond(['error' => 'measurement_plan_required', 'message' => 'Create a measurement plan before mapping elements.'], 409);
 }
 
-$scan = json_decode($profile['scan_data'], true);
 $pageUrl = trim((string)($input['page_url'] ?? ''));
-$allowedPages = [];
-foreach ($scan['pages'] ?? [] as $page) {
-    if (!empty($page['url'])) $allowedPages[] = rtrim($page['url'], '/');
+$submitted = parse_url($pageUrl);
+$allowed = parse_url($profile['root_url'] ?? '');
+$scheme = strtolower($submitted['scheme'] ?? '');
+$host = strtolower(rtrim($submitted['host'] ?? '', '.'));
+$allowedHost = strtolower(rtrim($allowed['host'] ?? '', '.'));
+
+$pageUrlValid = $pageUrl !== ''
+    && !preg_match('/[\x00-\x1F\x7F\\\\]/', $pageUrl)
+    && in_array($scheme, ['http', 'https'], true)
+    && !isset($submitted['user']) && !isset($submitted['pass'])
+    && $host !== '' && $host === $allowedHost
+    && ($submitted['port'] ?? null) === ($allowed['port'] ?? null);
+
+if (!$pageUrlValid) {
+    api_respond(['error' => 'page_outside_domain', 'message' => 'Choose a page on your verified site domain.'], 422);
 }
-if ($pageUrl === '' || !in_array(rtrim($pageUrl, '/'), $allowedPages, true)) {
-    api_respond(['error' => 'page_not_in_scan', 'message' => 'Choose a page from the latest site scan.'], 422);
-}
+
+$pageUrl = $scheme . '://' . $host
+    . (isset($submitted['port']) ? ':' . $submitted['port'] : '')
+    . ($submitted['path'] ?? '/')
+    . (isset($submitted['query']) ? '?' . $submitted['query'] : '');
 
 $elementName = mb_substr(trim(strip_tags((string)($input['element_name'] ?? ''))), 0, 120);
 $selector = trim((string)($input['css_selector'] ?? ''));

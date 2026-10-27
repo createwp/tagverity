@@ -234,6 +234,41 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  document.getElementById('mapper-check-snippet-button')?.addEventListener('click', async function () {
+    try {
+      const data = await request('api/check-mapper-snippet.php', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({client_id: state.clientId, csrf_token: csrfToken()})});
+      if (data.detected) { showToast('Snippet detected — reloading.', 'success'); location.reload(); }
+      else showToast('Snippet not found yet. Double-check it is pasted in <head> and try again.', 'error');
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+
+  document.getElementById('mapper-open-live-button')?.addEventListener('click', async function () {
+    try {
+      const data = await request('api/create-live-mapper-session.php', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({client_id: state.clientId, csrf_token: csrfToken()})});
+      const liveWindow = window.open(data.root_url + '#__tagverity_mapper=' + encodeURIComponent(data.token));
+      if (!liveWindow) { showToast('Allow pop-ups for this site to open the live mapper.', 'error'); return; }
+      state.liveMapperWindow = liveWindow;
+      state.liveMapperOrigin = new URL(data.root_url).origin;
+      state.liveMapperPollId = setInterval(function () {
+        if (state.liveMapperWindow.closed) { clearInterval(state.liveMapperPollId); return; }
+        loadMappings();
+      }, 4000);
+    } catch (error) { showToast(error.message, 'error'); }
+  });
+
+  window.addEventListener('message', function (event) {
+    if (!state.liveMapperWindow || event.source !== state.liveMapperWindow || event.origin !== state.liveMapperOrigin) return;
+    if (!event.data || event.data.source !== 'tagverity-live-mapper' || event.data.type !== 'element_selected') return;
+    const payload = event.data.payload;
+    if (!pageSelect.querySelector('option[value="' + CSS.escape(payload.page_url) + '"]')) {
+      const option = new Option(compactUrl(payload.page_url), payload.page_url);
+      pageSelect.add(option);
+    }
+    pageSelect.value = payload.page_url;
+    selectElement(payload, null);
+    showToast('Element received from the live site. Confirm what you want to measure.', 'info');
+  });
+
   pageSelect.addEventListener('change', function () {
     state.selected = null;
     state.editingMapping = null;

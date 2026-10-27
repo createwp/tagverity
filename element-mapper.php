@@ -17,7 +17,7 @@ $profile = null;
 $pages = [];
 if ($client) {
     $stmt = $pdo->prepare(
-        "SELECT op.status, op.latest_scan_id, op.measurement_plan, ss.scan_data
+        "SELECT op.status, op.latest_scan_id, op.measurement_plan, ss.scan_data, ss.root_url, ss.mapper_snippet_detected_at
          FROM onboarding_profiles op
          LEFT JOIN site_scans ss ON ss.id = op.latest_scan_id
          WHERE op.client_id = ?
@@ -25,6 +25,7 @@ if ($client) {
     );
     $stmt->execute([(int)$client['id']]);
     $profile = $stmt->fetch();
+    $scanRootUrl = $profile['root_url'] ?? null;
     if ($profile && $profile['scan_data']) {
         $scan = json_decode($profile['scan_data'], true);
         foreach ($scan['pages'] ?? [] as $page) {
@@ -70,7 +71,7 @@ $returnLabel = $returnToRelease ? 'Return to release review' : 'Return to tags &
           <a class="btn btn-primary mt-4" href="onboarding.php<?= $client ? '?client_id=' . (int)$client['id'] : '' ?>">Open tracking setup</a>
         </section>
       <?php else: ?>
-        <div id="element-mapper-app" data-client-id="<?= (int)$client['id'] ?>" data-api-base="<?= htmlspecialchars(APP_URL, ENT_QUOTES, 'UTF-8') ?>" data-edit-mapping-id="<?= (int)($_GET['mapping_id'] ?? 0) ?>">
+        <div id="element-mapper-app" data-client-id="<?= (int)$client['id'] ?>" data-api-base="<?= htmlspecialchars(APP_URL, ENT_QUOTES, 'UTF-8') ?>" data-edit-mapping-id="<?= (int)($_GET['mapping_id'] ?? 0) ?>" data-snippet-detected="<?= $profile && !empty($profile['mapper_snippet_detected_at']) ? '1' : '0' ?>" data-root-url="<?= htmlspecialchars($scanRootUrl ?? '', ENT_QUOTES, 'UTF-8') ?>">
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
 
           <?php if ($returnToRelease): ?>
@@ -97,6 +98,25 @@ $returnLabel = $returnToRelease ? 'Return to release review' : 'Return to tags &
               </label>
               <button class="btn btn-secondary" id="mapper-fullscreen-button" type="button">Open full-screen mapper</button>
             </div>
+          </section>
+
+          <section class="card mapper-snippet-card mt-4">
+            <?php if ($profile && !empty($profile['mapper_snippet_detected_at'])): ?>
+              <div class="mapper-snippet-ready">
+                <span class="onboarding-eyebrow">Live visual tagging</span>
+                <h2>Map elements on the live site</h2>
+                <p>Open your real, authenticated site in a new tab with the mapper overlay active, then click the element you want to track.</p>
+                <button class="btn btn-primary" id="mapper-open-live-button" type="button">Open live mapper</button>
+              </div>
+            <?php else: ?>
+              <div class="mapper-snippet-pending">
+                <span class="onboarding-eyebrow">Live visual tagging</span>
+                <h2>Install the live mapper snippet</h2>
+                <p>Add this snippet to your site's <code>&lt;head&gt;</code> to map elements directly on the live site, including pages outside the original scan.</p>
+                <pre class="mapper-snippet-code"><code>&lt;script src="<?= htmlspecialchars(APP_URL, ENT_QUOTES, 'UTF-8') ?>/assets/js/mapper-snippet.js" data-tagverity-api="<?= htmlspecialchars(APP_URL, ENT_QUOTES, 'UTF-8') ?>" async&gt;&lt;/script&gt;</code></pre>
+                <button class="btn btn-secondary" id="mapper-check-snippet-button" type="button">Check again</button>
+              </div>
+            <?php endif; ?>
           </section>
 
           <div class="mapper-workspace mt-4">
