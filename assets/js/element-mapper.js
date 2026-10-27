@@ -204,7 +204,15 @@ document.addEventListener('DOMContentLoaded', function () {
     return {ga4: 'GA4', posthog: 'PostHog', google_ads: 'Google Ads', meta: 'Meta', generic: 'Not assigned', unassigned: 'Not assigned'}[value] || value;
   }
 
+  function ensurePageOption(url) {
+    if (!pageSelect.querySelector('option[value="' + CSS.escape(url) + '"]')) {
+      const option = new Option(compactUrl(url), url);
+      pageSelect.add(option);
+    }
+  }
+
   function editMapping(mapping) {
+    ensurePageOption(mapping.page_url);
     pageSelect.value = mapping.page_url;
     const attributes = mapping.element_attributes || {};
     selectElement(Object.assign({}, attributes, {
@@ -243,30 +251,52 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   document.getElementById('mapper-open-live-button')?.addEventListener('click', async function () {
+    // window.open() must run synchronously in this click handler, before any
+    // await, or most browsers (notably Safari) treat the eventual open() as
+    // not user-triggered and block it. Open a blank window immediately,
+    // fail fast on a popup block, and only navigate it once the session is
+    // minted.
+    const liveWindow = window.open('about:blank');
+    if (!liveWindow) { showToast('Allow pop-ups for this site to open the live mapper.', 'error'); return; }
     try {
-      const data = await request('api/create-live-mapper-session.php', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({client_id: state.clientId, csrf_token: csrfToken()})});
-      const liveWindow = window.open(data.root_url + '#__tagverity_mapper=' + encodeURIComponent(data.token));
-      if (!liveWindow) { showToast('Allow pop-ups for this site to open the live mapper.', 'error'); return; }
+      const startUrlInput = document.getElementById('mapper-start-url-input');
+      const data = await request('api/create-live-mapper-session.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          client_id: state.clientId,
+          start_url: (startUrlInput && startUrlInput.value.trim()) || pageSelect.value,
+          csrf_token: csrfToken()
+        })
+      });
+      liveWindow.location = data.root_url + '#__tagverity_mapper=' + encodeURIComponent(data.token);
       state.liveMapperWindow = liveWindow;
-      state.liveMapperOrigin = new URL(data.root_url).origin;
+      state.liveMapperOrigins = data.allowed_origins || [];
+      state.liveMapperExpiresAt = new Date(data.expires_at.replace(' ', 'T') + 'Z').getTime();
+      if (state.liveMapperPollId) clearInterval(state.liveMapperPollId);
       state.liveMapperPollId = setInterval(function () {
-        if (state.liveMapperWindow.closed) { clearInterval(state.liveMapperPollId); return; }
+        if (state.liveMapperWindow.closed || Date.now() > state.liveMapperExpiresAt) {
+          clearInterval(state.liveMapperPollId);
+          return;
+        }
         loadMappings();
       }, 4000);
-    } catch (error) { showToast(error.message, 'error'); }
+    } catch (error) {
+      liveWindow.close();
+      showToast(error.message, 'error');
+    }
   });
 
   window.addEventListener('message', function (event) {
-    if (!state.liveMapperWindow || event.source !== state.liveMapperWindow || event.origin !== state.liveMapperOrigin) return;
+    if (!state.liveMapperWindow || event.source !== state.liveMapperWindow) return;
+    if (!state.liveMapperOrigins || state.liveMapperOrigins.indexOf(event.origin) === -1) return;
     if (!event.data || event.data.source !== 'tagverity-live-mapper' || event.data.type !== 'element_selected') return;
     const payload = event.data.payload;
-    if (!pageSelect.querySelector('option[value="' + CSS.escape(payload.page_url) + '"]')) {
-      const option = new Option(compactUrl(payload.page_url), payload.page_url);
-      pageSelect.add(option);
-    }
+    ensurePageOption(payload.page_url);
     pageSelect.value = payload.page_url;
     selectElement(payload, null);
     showToast('Element received from the live site. Confirm what you want to measure.', 'info');
+    event.source.postMessage({source: 'tagverity-dashboard', type: 'element_selected_ack'}, event.origin);
   });
 
   pageSelect.addEventListener('change', function () {

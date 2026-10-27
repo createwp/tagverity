@@ -6,6 +6,8 @@ use DateTimeZone;
 use DomainException;
 use PDO;
 
+require_once __DIR__ . '/ScanHostAllowlist.php';
+
 /**
  * Issues and validates short-lived, single-use tokens for the live visual
  * tagging toolbar's mapper sessions.
@@ -13,9 +15,11 @@ use PDO;
  * Tokens are random, high-entropy values that are returned to the caller
  * exactly once (at issuance) and never stored in raw form — only their
  * SHA-256 hash is persisted in `mapper_sessions.token_hash`. Validation
- * enforces that the token is being used from the same origin (scheme +
- * host + non-default port) as the site scan's `root_url`, and — on
- * success only — deletes the session row so the token cannot be redeemed
+ * enforces that the token is being used from an origin belonging to the
+ * site scan — `root_url`'s own origin, or the origin of any page the scan
+ * actually reached (see ScanHostAllowlist; the scanner follows redirects,
+ * so a scanned page's host can differ from `root_url`'s) — and, on
+ * success only, deletes the session row so the token cannot be redeemed
  * a second time. A failed validation (unknown token, expired, or origin
  * mismatch) never consumes the token, so a legitimate caller that hits a
  * transient issue can still redeem it afterwards.
@@ -56,8 +60,8 @@ final class MapperSessionManager {
      * @return array{client_id: int, site_scan_id: int, root_url: string, expires_at: string}
      * @throws DomainException with message `invalid_or_expired_token` when
      *     the token hash is unknown or already expired, or `origin_mismatch`
-     *     when the token is valid but used from a different origin than the
-     *     site scan's root_url.
+     *     when the token is valid but used from an origin that doesn't
+     *     belong to the site scan (see ScanHostAllowlist::origins()).
      */
     public function validateToken(PDO $pdo, string $token, string $origin): array {
         $tokenHash = hash('sha256', $token);
@@ -71,7 +75,7 @@ final class MapperSessionManager {
             // (row unchanged), closing the race where two requests could
             // otherwise both pass this check before either deletes the row.
             $stmt = $pdo->prepare(
-                "SELECT ms.id, ms.client_id, ms.site_scan_id, ms.expires_at, ss.root_url
+                "SELECT ms.id, ms.client_id, ms.site_scan_id, ms.expires_at, ss.root_url, ss.scan_data
                  FROM mapper_sessions ms
                  JOIN site_scans ss ON ss.id = ms.site_scan_id
                  WHERE ms.token_hash = ?
@@ -85,8 +89,15 @@ final class MapperSessionManager {
                 throw new DomainException('invalid_or_expired_token');
             }
 
-            $expectedOrigin = $this->canonicalOrigin($row['root_url']);
-            if ($expectedOrigin === null || strcasecmp($expectedOrigin, $origin) !== 0) {
+            $allowedOrigins = (new ScanHostAllowlist())->origins($row['root_url'], $row['scan_data']);
+            $matchesAllowedOrigin = false;
+            foreach ($allowedOrigins as $allowedOrigin) {
+                if (strcasecmp($allowedOrigin, $origin) === 0) {
+                    $matchesAllowedOrigin = true;
+                    break;
+                }
+            }
+            if (!$matchesAllowedOrigin) {
                 $pdo->rollBack(); // do NOT delete — a failed origin check must not consume the token
                 throw new DomainException('origin_mismatch');
             }
@@ -112,30 +123,5 @@ final class MapperSessionManager {
             }
             throw $e;
         }
-    }
-
-    /**
-     * Builds the canonical origin (lowercase scheme + host, with the port
-     * included only when it is not the scheme's default) for a URL, in the
-     * same form a browser's `Origin:` header uses.
-     */
-    private function canonicalOrigin(string $url): ?string {
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-        $host = parse_url($url, PHP_URL_HOST);
-        if ($scheme === null || $host === null) {
-            return null;
-        }
-
-        $scheme = strtolower($scheme);
-        $host = strtolower($host);
-        $port = parse_url($url, PHP_URL_PORT);
-        $defaultPorts = ['http' => 80, 'https' => 443];
-
-        $origin = "{$scheme}://{$host}";
-        if ($port !== null && (!isset($defaultPorts[$scheme]) || $port !== $defaultPorts[$scheme])) {
-            $origin .= ":{$port}";
-        }
-
-        return $origin;
     }
 }

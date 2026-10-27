@@ -199,6 +199,7 @@
     var hovered = null;
     var selected = null;
     var expiryTimer = null;
+    var ackTimer = null;
 
     function isUiElement(target) {
       return !!(target && target.closest && target.closest('[data-tagverity-ui]'));
@@ -208,6 +209,19 @@
       if (confirmation) confirmation.parentNode && confirmation.parentNode.removeChild(confirmation);
       confirmation = injectBanner('Sent to TagVerity — switch tabs to confirm');
     }
+
+    function showUnreachable() {
+      if (confirmation) confirmation.parentNode && confirmation.parentNode.removeChild(confirmation);
+      confirmation = injectBanner("Couldn't reach the TagVerity tab — reopen the live mapper from TagVerity.");
+    }
+
+    function onAckMessage(event) {
+      if (event.source !== window.opener || event.origin !== apiBase) return;
+      if (!event.data || event.data.type !== 'element_selected_ack') return;
+      if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
+      showConfirmation();
+    }
+    window.addEventListener('message', onAckMessage);
 
     function onMouseOver(event) {
       var target = event.target;
@@ -234,12 +248,22 @@
       selected = target;
       selected.classList.remove(CSS_HOVER_CLASS);
       selected.classList.add(CSS_SELECTED_CLASS);
-      window.opener && window.opener.postMessage({
+
+      if (!window.opener) {
+        // No opener reference at all (e.g. the client site sent
+        // Cross-Origin-Opener-Policy, or the dashboard tab was reloaded) —
+        // there is nothing to send to, so don't claim success.
+        showUnreachable();
+        return;
+      }
+
+      window.opener.postMessage({
         source: 'tagverity-live-mapper',
         type: 'element_selected',
         payload: payload
       }, apiBase);
-      showConfirmation();
+      if (ackTimer) clearTimeout(ackTimer);
+      ackTimer = setTimeout(showUnreachable, 1500);
     }
 
     function onSubmit(event) {
@@ -252,12 +276,14 @@
       document.removeEventListener('mouseout', onMouseOut, true);
       document.removeEventListener('click', onClick, true);
       document.removeEventListener('submit', onSubmit, true);
+      window.removeEventListener('message', onAckMessage);
       if (hovered) hovered.classList.remove(CSS_HOVER_CLASS);
       if (selected) selected.classList.remove(CSS_SELECTED_CLASS);
       if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
       if (confirmation && confirmation.parentNode) confirmation.parentNode.removeChild(confirmation);
       if (style && style.parentNode) style.parentNode.removeChild(style);
       if (expiryTimer) clearTimeout(expiryTimer);
+      if (ackTimer) clearTimeout(ackTimer);
       showExpiredBanner();
     }
 

@@ -3,8 +3,13 @@ require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/permissions.php';
 require_once __DIR__ . '/../includes/api.php';
+// Explicit require (not just the `use` below) because this worktree's
+// vendor/ directory is a junction to the main checkout, and Composer's
+// autoloader can't resolve classes that only exist on this branch.
+require_once __DIR__ . '/../src/ScanHostAllowlist.php';
 
 use GTMAuditor\ElementTemplateBuilder;
+use GTMAuditor\ScanHostAllowlist;
 
 $user = require_auth();
 api_require_post();
@@ -17,7 +22,7 @@ $mappingId = (int)($input['mapping_id'] ?? 0);
 assert_client_access($clientId);
 
 $stmt = db()->prepare(
-    "SELECT op.latest_scan_id, op.measurement_plan, ss.root_url
+    "SELECT op.latest_scan_id, op.measurement_plan, ss.root_url, ss.scan_data
      FROM onboarding_profiles op
      JOIN site_scans ss ON ss.id = op.latest_scan_id AND ss.client_id = op.client_id
      WHERE op.client_id = ? AND op.status = 'plan_ready' AND ss.status = 'complete'
@@ -34,13 +39,13 @@ $submitted = parse_url($pageUrl);
 $allowed = parse_url($profile['root_url'] ?? '');
 $scheme = strtolower($submitted['scheme'] ?? '');
 $host = strtolower(rtrim($submitted['host'] ?? '', '.'));
-$allowedHost = strtolower(rtrim($allowed['host'] ?? '', '.'));
+$allowedHosts = (new ScanHostAllowlist())->hosts($profile['root_url'] ?? '', $profile['scan_data'] ?? null);
 
 $pageUrlValid = $pageUrl !== ''
     && !preg_match('/[\x00-\x1F\x7F\\\\]/', $pageUrl)
     && in_array($scheme, ['http', 'https'], true)
     && !isset($submitted['user']) && !isset($submitted['pass'])
-    && $host !== '' && $host === $allowedHost
+    && $host !== '' && in_array($host, $allowedHosts, true)
     && ($submitted['port'] ?? null) === ($allowed['port'] ?? null);
 
 if (!$pageUrlValid) {

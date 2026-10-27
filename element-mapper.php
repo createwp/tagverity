@@ -105,7 +105,11 @@ $returnLabel = $returnToRelease ? 'Return to release review' : 'Return to tags &
               <div class="mapper-snippet-ready">
                 <span class="onboarding-eyebrow">Live visual tagging</span>
                 <h2>Map elements on the live site</h2>
-                <p>Open your real, authenticated site in a new tab with the mapper overlay active, then click the element you want to track.</p>
+                <p>Open your real, authenticated site in a new tab with the mapper overlay active, then click the element you want to track. Defaults to the page selected above, or type any other URL on your site.</p>
+                <label class="mapper-page-picker">
+                  <span class="form-label">Start URL (optional)</span>
+                  <input class="form-input" id="mapper-start-url-input" type="text" placeholder="<?= htmlspecialchars($scanRootUrl ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                </label>
                 <button class="btn btn-primary" id="mapper-open-live-button" type="button">Open live mapper</button>
               </div>
             <?php else: ?>
