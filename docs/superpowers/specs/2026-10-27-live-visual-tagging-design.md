@@ -2,7 +2,7 @@
 
 **Document type:** Project design (superpowers:brainstorming)
 **Last updated:** 2026-10-27
-**Status:** Draft — pending product-owner approval before any implementation plan or code
+**Status:** Approved by product owner 2026-10-27 — proceeding to implementation plan
 **Supersedes-in-part:** the "visual element mapping MVP" section of
 [`PROJECT_STATUS.md`](../../PROJECT_STATUS.md) once built; does not remove it
 until the live path is proven
@@ -161,15 +161,15 @@ only enabled once this check has passed, so the first thing a user sees
 if the snippet isn't detected yet is clear install instructions, not a
 broken button.
 
-**Open question for the product owner (genuinely theirs, not mine to
-decide):** should the live mapper require real domain-ownership
-verification (DNS TXT record or meta tag, the workflow `domain-map.php`
-was always meant to host but never got) as a new prerequisite before this
-ships, or is matching the product's existing self-reported trust level
-acceptable for now? Matching it doesn't lower security below where the
-product already sits (the scanner and static mapper already trust
-whatever URL a logged-in client-scoped user types in), but it does mean
-the live mapper inherits that same open item rather than closing it.
+**Decided (2026-10-27, product owner):** the live mapper matches the
+product's existing self-reported trust level rather than requiring real
+domain-ownership verification as a new prerequisite. This does not lower
+security below where the product already sits — the scanner and static
+mapper already trust whatever URL a logged-in client-scoped user types
+in — but the live mapper inherits that same open item (real
+DNS/meta-tag verification, the workflow `domain-map.php` was always meant
+to host) rather than closing it. That remains a separate future-hardening
+item, not part of this build.
 
 ### 4. What is explicitly reused, unchanged
 
