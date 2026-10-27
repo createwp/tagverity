@@ -299,4 +299,36 @@ try {
     $results[] = ['label' => '011 - client destination connections', 'ok' => false, 'msg' => $e->getMessage()];
 }
 
+// Migration 012: Live visual tagging sessions
+try {
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->execute(['site_scans', 'mapper_snippet_detected_at']);
+    if ((int)$stmt->fetchColumn() === 0) {
+        $pdo->exec("ALTER TABLE site_scans ADD COLUMN mapper_snippet_detected_at DATETIME NULL AFTER completed_at");
+    }
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS mapper_sessions (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            client_id INT UNSIGNED NOT NULL,
+            site_scan_id INT UNSIGNED NOT NULL,
+            created_by_user_id INT UNSIGNED NOT NULL,
+            token_hash CHAR(64) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_mapper_sessions_token_hash (token_hash),
+            INDEX idx_mapper_sessions_expiry (expires_at),
+            FOREIGN KEY (client_id) REFERENCES clients(id),
+            FOREIGN KEY (site_scan_id) REFERENCES site_scans(id),
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $results[] = ['label' => '012 - live visual tagging sessions', 'ok' => true, 'msg' => 'OK'];
+} catch (PDOException $e) {
+    error_log('Migration 012 failed: ' . $e->getMessage());
+    $results[] = ['label' => '012 - live visual tagging sessions', 'ok' => false, 'msg' => $e->getMessage()];
+}
+
 echo json_encode(['ok' => !in_array(false, array_column($results, 'ok'), true), 'results' => $results]);
