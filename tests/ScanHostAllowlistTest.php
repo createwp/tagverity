@@ -31,6 +31,46 @@ assert_allowlist_set(
     'hosts() includes both apex root and redirected www host'
 );
 
+// 1b. A redirect through an unrelated third-party host (tracker, payment
+// processor, etc.) during the scan must NEVER become an authorized host or
+// origin — only the root host and its one apex/www sibling ever qualify,
+// no matter how many other distinct hosts appear in scan_data.pages[].
+$scanDataWithThirdPartyHost = json_encode([
+    'pages' => [
+        ['url' => 'https://www.example.com/pricing'],
+        ['url' => 'https://tracker.example.net/pixel'],
+        ['url' => 'https://checkout.payments.example.org/session'],
+    ],
+]);
+assert_allowlist_set(
+    ['example.com', 'www.example.com'],
+    $allowlist->hosts('https://example.com/', $scanDataWithThirdPartyHost),
+    'hosts() excludes unrelated third-party redirect hosts even when present in scan_data'
+);
+assert_allowlist_set(
+    ['https://example.com', 'https://www.example.com'],
+    $allowlist->origins('https://example.com/', $scanDataWithThirdPartyHost),
+    'origins() excludes unrelated third-party redirect hosts even when present in scan_data'
+);
+// With no apex/www sibling present at all, only the root's own host/origin
+// survive — not any of the third-party hosts.
+$scanDataOnlyThirdPartyHosts = json_encode([
+    'pages' => [
+        ['url' => 'https://tracker.example.net/pixel'],
+        ['url' => 'https://checkout.payments.example.org/session'],
+    ],
+]);
+assert_allowlist_set(
+    ['example.com'],
+    $allowlist->hosts('https://example.com/', $scanDataOnlyThirdPartyHosts),
+    'hosts() falls back to just the root host when scan_data has only third-party hosts'
+);
+assert_allowlist_set(
+    ['https://example.com'],
+    $allowlist->origins('https://example.com/', $scanDataOnlyThirdPartyHosts),
+    'origins() falls back to just the root origin when scan_data has only third-party hosts'
+);
+
 // 2. No scan_data at all: falls back to just the root's own host.
 assert_allowlist_set(
     ['example.com'],
@@ -109,6 +149,20 @@ assert_allowlist_set(
         'not-even-an-array',
     ]])),
     'hosts() skips malformed page entries without throwing'
+);
+
+// 6. The apex/www sibling relationship works symmetrically: a root on
+// `www.` allows the bare apex host (and nothing else).
+$scanDataApexSiblingOfWwwRoot = json_encode([
+    'pages' => [
+        ['url' => 'https://example.com/pricing'],
+        ['url' => 'https://tracker.example.net/pixel'],
+    ],
+]);
+assert_allowlist_set(
+    ['www.example.com', 'example.com'],
+    $allowlist->hosts('https://www.example.com/', $scanDataApexSiblingOfWwwRoot),
+    'hosts() allows the bare apex as the sibling of a www root, excluding third parties'
 );
 
 echo "ScanHostAllowlist tests passed.\n";
