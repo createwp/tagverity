@@ -240,6 +240,35 @@ Audit request
 - Capture of stable element IDs/classes plus form ID, classes, name, selector,
   field name/type, autocomplete hint, and associated label
 
+### Live Visual Tagging Toolbar
+
+- A one-time install snippet (`assets/js/mapper-snippet.js`) that stays dormant
+  on a client's real site until opened with a short-lived, single-use,
+  domain-scoped token
+- Server-side detection of the installed snippet via a bounded fetch of the
+  scan's root page, recorded on `site_scans.mapper_snippet_detected_at`
+- Token issuance and validation (`src/MapperSessionManager.php`) backed by
+  SHA-256-hashed, single-use tokens consumed atomically under
+  `SELECT ... FOR UPDATE`, with full-origin (not host-only) matching
+- A cross-origin, session-cookie-free exchange endpoint
+  (`api/exchange-live-mapper-session.php`) that the snippet calls directly
+  from the client's site, rate-limited per IP
+- Live hover-and-click selection on the real, running page, reusing the
+  static mapper's selector-generation logic verbatim, with the captured
+  element handed back to the existing dashboard review form via
+  `window.opener.postMessage` and an acknowledgement handshake rather than a
+  new save path
+- An optional start-URL override so a session can open on any page on the
+  scan's own domain, not only the scanned root
+- `src/ScanHostAllowlist.php` defines which hosts/origins a given scan
+  authorizes — the scan's root host plus only its apex/www sibling when that
+  sibling was actually seen during the scan, deliberately excluding any other
+  host a scan's redirects may have passed through
+- `api/save-element-mapping.php`'s page-URL check loosened from "must be one
+  of the originally scanned pages" to "must be on an allowed host for the
+  scan," since reaching pages the bounded scan never crawled is the point of
+  going live
+
 ### Controlled Tag Releases MVP
 
 - Multi-select of draft mappings so unselected mappings remain outside the release
@@ -400,9 +429,19 @@ reliable:
   mitigation (opaque, cookie-less origin if script does execute), but the
   sanitiser itself should be replaced with an HTML5-aware sanitiser (e.g.
   HTML Purifier) rather than the current removeNodes/attribute-allowlist
-  approach. Worth resolving before or alongside the live visual tagging work
-  in `docs/superpowers/specs/2026-10-27-live-visual-tagging-design.md`, since
-  that work extends this same code family.
+  approach. Still unresolved; the live visual tagging work below extends this
+  same code family but did not touch the sanitiser itself.
+- Live visual tagging (`assets/js/mapper-snippet.js`,
+  `src/MapperSessionManager.php`, `src/ScanHostAllowlist.php`): the
+  acknowledgement handshake has no per-click correlation id, so a stale ack
+  arriving just after a second click could in theory clear the wrong click's
+  timer (narrow race, requires two clicks within ~1.5s); `start_url` is
+  validated against allowed origins (correct), but a legitimate host with a
+  scheme/port the scan never recorded fails with a generic error rather than
+  a clearer one; `mapper_sessions` rows are never swept after expiry (no
+  cleanup job, table only grows); no automated test exercises an installed
+  snippet behind a server-side-only detection gap (e.g. installed via GTM
+  rather than a literal `<script>` tag TagVerity's own fetch can see).
 
 This is an implementation-status record, not a full security or code review.
 Additional findings should be recorded when formal review begins.
@@ -509,6 +548,9 @@ When implementation work changes the project:
 | 2026-07-30 | Adopted a light-only Material-inspired interface and full-screen visual mapper to prioritise website preview space. |
 | 2026-07-31 | Made Tags & triggers the central source of truth between proposal, visual mapping, privacy configuration, and controlled release review. |
 | 2026-07-31 | Adopted a unified stroke-SVG icon family and a sapphire, deep-navy, orange-accent, cool-neutral SaaS palette based on the approved visual references. |
+| 2026-10-27 | Benchmarked the product against current GTM, Tealium, Segment, mParticle, RudderStack, and PostHog/Heap/Amplitude-style point-and-click tagging; identified live visual tagging as the highest-leverage gap in the category and scoped a prioritised roadmap (`docs/COMPETITIVE_LANDSCAPE_AND_ROADMAP.md`). |
+| 2026-10-27 | Approved the live visual tagging design (`docs/superpowers/specs/2026-10-27-live-visual-tagging-design.md`): a dormant install snippet activated by a short-lived token, reusing the static mapper's selector logic and the existing dashboard save flow via `window.opener.postMessage` rather than a new save path. Matched the product's existing self-reported domain-trust level rather than requiring new DNS/meta-tag ownership verification. |
+| 2026-10-27 | Discovered during implementation that comparing only a scan's root hostname (not the full set of hosts/origins a scan actually touched) breaks both the new live flow and the existing static mapper for any site whose root redirects to a different host (e.g. apex to www) — fixed by scoping an allowlist to the root host plus only its apex/www sibling, deliberately excluding any other host a scan's redirects may have passed through. |
 
 ## Change Log
 
@@ -640,3 +682,51 @@ When implementation work changes the project:
 - Separated trigger type from delivery destination throughout the workspace:
   element clicks remain click triggers, a missing destination is shown as Not
   assigned instead of Data layer, and releases with unassigned delivery are blocked.
+
+### 2026-10-27
+
+- Discovered and committed months of previously-uncommitted onboarding,
+  visual mapping, tags & triggers workspace, destination connections, and
+  controlled release work that existed only in the local working copy —
+  the gap between this document's description of "Implemented Functionality"
+  and what git actually held. `run-migrations.php` (migrations 002-011),
+  every file listed under Scan-led Onboarding MVP through Controlled Tag
+  Releases MVP above, and the accompanying test suite are now in version
+  control for the first time.
+- Benchmarked the product against current Google Tag Manager, Tealium,
+  Segment, mParticle, RudderStack, and PostHog/Heap/Amplitude-style
+  point-and-click tagging (`docs/COMPETITIVE_LANDSCAPE_AND_ROADMAP.md`) and
+  scoped a prioritised roadmap, with live visual tagging identified as the
+  highest-leverage, category-wide gap.
+- Added the Live Visual Tagging Toolbar: a dormant install snippet
+  (`assets/js/mapper-snippet.js`) activated by a short-lived, single-use,
+  domain-scoped token (`src/MapperSessionManager.php`), a cross-origin
+  session-cookie-free exchange endpoint, server-side snippet detection, and
+  an optional start-URL override so a live session can open on any page on
+  the scan's own domain. Captured selections are handed back to the existing
+  dashboard review form via `window.opener.postMessage` and an
+  acknowledgement handshake rather than a new save path, reusing the static
+  mapper's selector-generation logic verbatim.
+- Added `src/ScanHostAllowlist.php`, which defines which hosts/origins a
+  given scan authorizes — the scan's root host plus only its apex/www
+  sibling when that sibling was actually seen during the scan, after
+  discovering during review that a naive "every host the scan's redirects
+  touched" approach would have trusted arbitrary third-party redirect
+  targets. Loosened `api/save-element-mapping.php`'s page-URL check from
+  scanned-page membership to this allowed-host set, fixing a real regression
+  where a scan whose root redirected to a different host (e.g. apex to www)
+  could no longer save mappings against its own previously-scanned pages.
+- Hardened `preview-site.php`'s CSP with `sandbox allow-scripts` as an
+  interim mitigation for `SitePreviewRenderer`'s libxml-based sanitiser (see
+  Known Implementation Concerns); the sanitiser itself is unchanged.
+- Verified the full live-tagging flow end to end in a real browser against a
+  throwaway local test site and test account: snippet activation, live
+  hover/click selection and payload capture on a real DOM (including the
+  start-URL override reaching a second, unscanned page), the acknowledgement
+  handshake's success and no-ack-timeout paths, and the exchange endpoint's
+  real request/response cycle. `window.open`'s pop-up-blocked path was
+  exercised as a side effect of the test sandbox's own unconditional pop-up
+  block. The dashboard tab's own message-handling code was not exercised via
+  a genuine `window.opener` relationship in this pass (verified instead by
+  two independent code reviews); all test data and temporary files were
+  removed afterward.
