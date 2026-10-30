@@ -147,7 +147,8 @@ class AuditJobRunner
         }
 
         // 6. Record the outcome, health score (complete only) and source status on the job
-        $sourceJson = $collected + [
+        // Store the status block and audit metadata only. Raw GTM and GA4 data stays out of the row.
+        $sourceJson = $collected['source_status'] + [
             'rule_set_version' => AuditOutcome::RULE_SET_VERSION,
             'scoring_version'  => AuditOutcome::SCORING_VERSION,
             'ga4_window_days'  => AuditDataCollector::GA4_WINDOW_DAYS,

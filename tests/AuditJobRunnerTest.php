@@ -99,8 +99,17 @@ function case_happy_path(\PDO $pdo, array $containerVersion, array $ga4Rows): vo
         assert_runner('happy: health score set', false, $job['health_score'] === null);
         $sourceStatus = decoded_source_status($job);
         assert_runner('happy: rule set version', '2026.10.1', $sourceStatus['rule_set_version'] ?? null);
-        assert_runner('happy: gtm status', 'success', $sourceStatus['source_status']['gtm']['status'] ?? null);
-        assert_runner('happy: ga4 status', 'success', $sourceStatus['source_status']['ga4']['status'] ?? null);
+        assert_runner('happy: gtm status', 'success', $sourceStatus['gtm']['status'] ?? null);
+        assert_runner('happy: ga4 status', 'success', $sourceStatus['ga4']['status'] ?? null);
+        assert_runner('happy: no raw data at top level', false, array_key_exists('tags', $sourceStatus));
+        $keys = array_keys($sourceStatus);
+        sort($keys);
+        $expectedKeys = [
+            'bigquery', 'crawl', 'ga4', 'ga4_property_id', 'ga4_window_days', 'gtm',
+            'gtm_public_id', 'rule_set_version', 'scoring_version',
+        ];
+        assert_runner('happy: source_status key set', $expectedKeys, $keys);
+        assert_runner('happy: source_status stored compactly', true, strlen((string) $job['source_status']) < 2000);
     } finally {
         if ($accountId > 0) {
             TestFixtures::cleanupAccount($pdo, $accountId);
@@ -128,9 +137,9 @@ function case_factory_throws(\PDO $pdo): void
         assert_runner('auth: status', 'failed', $job['status']);
         assert_runner('auth: health score null', null, $job['health_score']);
         $sourceStatus = decoded_source_status($job);
-        assert_runner('auth: gtm status', 'authentication_failed', $sourceStatus['source_status']['gtm']['status'] ?? null);
-        assert_runner('auth: ga4 status', 'authentication_failed', $sourceStatus['source_status']['ga4']['status'] ?? null);
-        assert_runner('auth: gtm detail', 'authentication_failed', $sourceStatus['source_status']['gtm']['detail'] ?? null);
+        assert_runner('auth: gtm status', 'authentication_failed', $sourceStatus['gtm']['status'] ?? null);
+        assert_runner('auth: ga4 status', 'authentication_failed', $sourceStatus['ga4']['status'] ?? null);
+        assert_runner('auth: gtm detail', 'authentication_failed', $sourceStatus['gtm']['detail'] ?? null);
     } finally {
         if ($accountId > 0) {
             TestFixtures::cleanupAccount($pdo, $accountId);
@@ -157,8 +166,8 @@ function case_ga4_not_selected(\PDO $pdo, array $containerVersion, array $ga4Row
         assert_runner('partial: status', 'partial', $job['status']);
         assert_runner('partial: health score null', null, $job['health_score']);
         $sourceStatus = decoded_source_status($job);
-        assert_runner('partial: ga4 status', 'insufficient_coverage', $sourceStatus['source_status']['ga4']['status'] ?? null);
-        assert_runner('partial: gtm status', 'success', $sourceStatus['source_status']['gtm']['status'] ?? null);
+        assert_runner('partial: ga4 status', 'insufficient_coverage', $sourceStatus['ga4']['status'] ?? null);
+        assert_runner('partial: gtm status', 'success', $sourceStatus['gtm']['status'] ?? null);
     } finally {
         if ($accountId > 0) {
             TestFixtures::cleanupAccount($pdo, $accountId);
@@ -221,8 +230,8 @@ function case_connection_row_missing(\PDO $pdo, array $containerVersion, array $
         assert_runner('missing connection: factory never called', 0, $calls);
         assert_runner('missing connection: status', 'failed', $job['status']);
         $sourceStatus = decoded_source_status($job);
-        assert_runner('missing connection: gtm status', 'unavailable', $sourceStatus['source_status']['gtm']['status'] ?? null);
-        assert_runner('missing connection: gtm detail', 'connection_missing', $sourceStatus['source_status']['gtm']['detail'] ?? null);
+        assert_runner('missing connection: gtm status', 'unavailable', $sourceStatus['gtm']['status'] ?? null);
+        assert_runner('missing connection: gtm detail', 'connection_missing', $sourceStatus['gtm']['detail'] ?? null);
     } finally {
         if ($accountId > 0) {
             TestFixtures::cleanupAccount($pdo, $accountId);
