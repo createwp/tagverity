@@ -124,4 +124,24 @@ final class MapperSessionManager {
             throw $e;
         }
     }
+
+    /**
+     * Deletes mapper sessions that expired more than $graceSeconds ago.
+     *
+     * Expired rows are already rejected by validateToken(); this only keeps
+     * the table from growing forever. The cutoff uses UTC_TIMESTAMP() because
+     * expires_at is written in UTC — NOW() follows the MySQL session time zone
+     * and would sweep live tokens early on any server not set to UTC.
+     *
+     * @return int Number of rows deleted.
+     */
+    public function purgeExpired(PDO $pdo, int $graceSeconds = 3600): int {
+        $stmt = $pdo->prepare(
+            "DELETE FROM mapper_sessions WHERE expires_at < (UTC_TIMESTAMP() - INTERVAL ? SECOND)"
+        );
+        $stmt->bindValue(1, $graceSeconds, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->rowCount();
+    }
 }

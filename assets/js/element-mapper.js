@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function () {
     pageSelect.value = payload.page_url;
     selectElement(payload, null);
     showToast('Element received from the live site. Confirm what you want to measure.', 'info');
-    event.source.postMessage({source: 'tagverity-dashboard', type: 'element_selected_ack'}, event.origin);
+    event.source.postMessage({source: 'tagverity-dashboard', type: 'element_selected_ack', selection_id: event.data.selection_id}, event.origin);
   });
 
   pageSelect.addEventListener('change', function () {

@@ -421,27 +421,13 @@ reliable:
   project working conventions require application modals.
 - Some navigation and feature interfaces were built ahead of their backing
   endpoints.
-- `SitePreviewRenderer`'s sanitiser relies on libxml's HTML parser/serialiser,
-  which does not always agree with a real browser's HTML5 parser on the same
-  markup. This parser-differential class of bug (mutation XSS) means
-  sanitised-looking output can still execute script once re-parsed by a
-  browser. `preview-site.php`'s CSP now adds `sandbox allow-scripts` as a
-  mitigation (opaque, cookie-less origin if script does execute), but the
-  sanitiser itself should be replaced with an HTML5-aware sanitiser (e.g.
-  HTML Purifier) rather than the current removeNodes/attribute-allowlist
-  approach. Still unresolved; the live visual tagging work below extends this
-  same code family but did not touch the sanitiser itself.
 - Live visual tagging (`assets/js/mapper-snippet.js`,
   `src/MapperSessionManager.php`, `src/ScanHostAllowlist.php`): the
-  acknowledgement handshake has no per-click correlation id, so a stale ack
-  arriving just after a second click could in theory clear the wrong click's
-  timer (narrow race, requires two clicks within ~1.5s); `start_url` is
-  validated against allowed origins (correct), but a legitimate host with a
-  scheme/port the scan never recorded fails with a generic error rather than
-  a clearer one; `mapper_sessions` rows are never swept after expiry (no
-  cleanup job, table only grows); no automated test exercises an installed
-  snippet behind a server-side-only detection gap (e.g. installed via GTM
-  rather than a literal `<script>` tag TagVerity's own fetch can see).
+  `start_url` is validated against allowed origins (correct), but a legitimate
+  host with a scheme/port the scan never recorded fails with a generic error
+  rather than a clearer one; no automated test exercises an installed snippet
+  behind a server-side-only detection gap (e.g. installed via GTM rather than a
+  literal `<script>` tag TagVerity's own fetch can see).
 
 This is an implementation-status record, not a full security or code review.
 Additional findings should be recorded when formal review begins.
@@ -471,6 +457,7 @@ As of 2026-07-30:
 - The system PATH points to PHP 7.4.26; validation commands must explicitly use
   `C:\wamp64\bin\php\php8.1.0\php.exe` or update the shell PATH.
 - All PHP files pass syntax validation under the configured local PHP runtime.
+- Run every test with `C:\wamp64\bin\php\php8.1.0\php.exe tests/run.php` (or `composer test` when PATH PHP is 8.1).
 - Composer dependencies are installed.
 - MySQL is reachable and the two onboarding tables were added successfully;
   migration 002 was run twice to confirm idempotency.
@@ -730,3 +717,45 @@ When implementation work changes the project:
   a genuine `window.opener` relationship in this pass (verified instead by
   two independent code reviews); all test data and temporary files were
   removed afterward.
+
+### 2026-10-30
+
+- Replaced the libxml-based preview sanitiser in `src/SitePreviewRenderer.php`
+  with a `masterminds/html5` parser (now a direct requirement in
+  `composer.json`). Removals match element local names case-insensitively,
+  including inside `svg`/`math`; `on*`, `srcdoc`, `formaction`, `ping`,
+  `target` and `xmlns:xlink` attributes are dropped; URL attributes are
+  normalised before the scheme check; `style` values with `expression(`,
+  `url(javascript` or `-moz-binding` are dropped. `tests/SitePreviewRendererTest.php`
+  re-parses the output for twenty mutation-XSS payloads and asserts one preview
+  script, no `on*` attributes, no `javascript:` URLs, no `style` inside svg, no
+  raw-text or MathML elements, and the preview script as the last body element. The libxml concern is
+  removed from Known Implementation Concerns; the `sandbox allow-scripts` CSP in
+  `preview-site.php` stays as defence in depth.
+  masterminds/html5 does not apply HTML5 foreign-content rules to raw-text elements,
+  so `style` inside SVG and the raw-text elements (`xmp`, `noembed`, `noframes`,
+  `plaintext`) are removed outright. Kept page-level `style` elements have every
+  `</` rewritten to `<\/` because masterminds/html5 ends raw text only on the
+  exact `</style>` while browsers also end it on `</style x>`, `</style/>` and
+  similar; the controller verified 34 payloads clean in a real browser parser
+  (Chromium DOMParser).
+- Live visual tagging acknowledgements are now correlated per click: the snippet
+  sends a 16-hex-char `selection_id` with each `element_selected` message,
+  `element-mapper.js` echoes it in `element_selected_ack`, and the snippet clears
+  its 1.5 s timer only for a matching id (`isMatchingAck` in
+  `assets/js/mapper-snippet.js`, covered by `tests/MapperSnippetAckTest.js`). The
+  ack-race and unswept `mapper_sessions` concerns are removed from Known
+  Implementation Concerns.
+- Added a single-command test runner, `tests/run.php` (`composer test`). It runs
+  every `tests/*Test.php` and `tests/*Test.js`, prints PASS, FAIL or SKIP for each,
+  and exits 1 on any failure. It only runs from the CLI.
+- Added GitHub Actions CI (`.github/workflows/ci.yml`) on PHP 8.1 with a MySQL 8.0
+  service. It strips the MySQL 5.7-only `SET GLOBAL` lines from the schema, then
+  runs PHP lint, the migrations and the test runner.
+- Added a deny-by-default `.htaccess`: dot-paths, `vendor/`, `tests/`, `docs/`,
+  `logs/`, `storage/`, `sql/`, `src/`, `includes/`, `cron/`, `node_modules/`, `*.md`
+  and the composer manifests return 403. `tests/HtaccessRulesTest.php` checks the rules.
+- Added `MapperSessionManager::purgeExpired()` and `cron/sweep-mapper-sessions.php`,
+  which deletes expired live-mapper sessions. It compares against `UTC_TIMESTAMP()`
+  because `expires_at` is stored in UTC. Production needs the hourly cron line
+  `0 * * * * php /path/to/gtm-auditor/cron/sweep-mapper-sessions.php`.

@@ -1,20 +1,31 @@
 <?php
 namespace GTMAuditor;
 
+use Masterminds\HTML5;
+
 final class SitePreviewRenderer {
+    // xmp, noembed, noframes and plaintext are raw-text elements that masterminds/html5 does not parse
+    // the way browsers do; none of them matter for a visual preview, so they are removed outright.
+    private const REMOVED_ELEMENTS = ['script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'noscript', 'base', 'template', 'portal', 'math', 'xmp', 'noembed', 'noframes', 'plaintext'];
+    private const SVG_REMOVED_ELEMENTS = ['foreignobject', 'animate', 'set', 'handler', 'listener'];
+    private const DROPPED_ATTRIBUTES = ['srcdoc', 'formaction', 'ping', 'target', 'xmlns:xlink'];
+    private const URL_ATTRIBUTES = ['href', 'src', 'xlink:href', 'action', 'data', 'poster', 'background', 'srcset'];
+    private const LOWER = "translate(local-name(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')";
+
     public function render(string $html, string $pageUrl): string {
-        $dom = new \DOMDocument();
-        $previous = libxml_use_internal_errors(true);
-        $loaded = $dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-        if (!$loaded) {
-            throw new \RuntimeException('preview_parse_failed');
+        // HTML5 parser (as used by browsers). disable_html_ns keeps HTML elements namespace-free,
+        // so every lookup below goes by local name because svg/math children keep their own namespace.
+        $parser = new HTML5(['disable_html_ns' => true]);
+        try {
+            $dom = $parser->loadHTML($html);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('preview_parse_failed', 0, $e);
         }
 
         $xpath = new \DOMXPath($dom);
-        $this->removeNodes($xpath, '//script|//iframe|//frame|//object|//embed|//applet|//noscript|//base|//meta[translate(@http-equiv,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz")="refresh"]');
+        $this->removeNodes($xpath, $this->removalQuery());
         $this->sanitiseAttributes($xpath);
+        $this->neutraliseStyleEndTags($xpath);
 
         $htmlNode = $dom->getElementsByTagName('html')->item(0);
         if (!$htmlNode) {
@@ -53,7 +64,21 @@ final class SitePreviewRenderer {
         $script->appendChild($dom->createTextNode($this->previewScript()));
         $body->appendChild($script);
 
-        return $dom->saveHTML();
+        return $parser->saveHTML($dom);
+    }
+
+    private function removalQuery(): string {
+        $named = static fn (array $names): string => implode(' or ', array_map(
+            static fn (string $name): string => self::LOWER . "='" . $name . "'",
+            $names
+        ));
+        $anywhere = '//*[' . $named(self::REMOVED_ELEMENTS) . ']';
+        $inSvg = '//*[(' . $named(self::SVG_REMOVED_ELEMENTS) . ") and ancestor::*[" . self::LOWER . "='svg']]";
+        // style inside svg: masterminds parses it as raw text, a browser parses it as markup, so it is removed.
+        // Page-level style elements (outside svg) are kept.
+        $svgStyle = '//*[' . self::LOWER . "='style' and ancestor::*[" . self::LOWER . "='svg']]";
+        $metaRefresh = '//*[' . self::LOWER . "='meta'][translate(@http-equiv,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='refresh']";
+        return implode('|', [$anywhere, $inSvg, $svgStyle, $metaRefresh]);
     }
 
     private function removeNodes(\DOMXPath $xpath, string $query): void {
@@ -67,27 +92,78 @@ final class SitePreviewRenderer {
     }
 
     private function sanitiseAttributes(\DOMXPath $xpath): void {
+        $elements = [];
         foreach ($xpath->query('//*') as $element) {
-            $remove = [];
+            $elements[] = $element;
+        }
+        foreach ($elements as $element) {
+            // Collect the attribute nodes first so removal never mutates the list being walked.
+            $attributes = [];
             foreach ($element->attributes as $attribute) {
-                $name = strtolower($attribute->name);
-                $value = trim($attribute->value);
-                if (str_starts_with($name, 'on') || in_array($name, ['srcdoc', 'formaction', 'ping', 'target'], true)) {
-                    $remove[] = $attribute->name;
-                    continue;
-                }
-                if (in_array($name, ['href', 'src', 'xlink:href'], true) && preg_match('#^\s*(javascript|vbscript|file):#i', $value)) {
-                    $remove[] = $attribute->name;
+                $attributes[] = $attribute;
+            }
+            foreach ($attributes as $attribute) {
+                if ($this->isUnsafeAttribute($element, $attribute)) {
+                    $element->removeAttributeNode($attribute);
                 }
             }
-            foreach ($remove as $attributeName) {
-                $element->removeAttribute($attributeName);
-            }
-            if (strtolower($element->nodeName) === 'form') {
+            if (strtolower($element->localName ?? $element->nodeName) === 'form') {
                 $element->setAttribute('action', '#');
                 $element->setAttribute('method', 'get');
             }
         }
+    }
+
+    /**
+     * masterminds/html5 ends a raw-text style only on the exact text "</style>", while browsers also end it
+     * on "</style" followed by whitespace, "/" or ">" in any case. Rewriting every "</" inside kept style
+     * elements to "<\/" (equivalent in CSS) means no browser can see an end tag inside them.
+     */
+    private function neutraliseStyleEndTags(\DOMXPath $xpath): void {
+        $styles = [];
+        foreach ($xpath->query('//*[' . self::LOWER . "='style']") as $style) {
+            $styles[] = $style;
+        }
+        foreach ($styles as $style) {
+            $text = $style->textContent;
+            if (!str_contains($text, '</')) {
+                continue;
+            }
+            while ($style->firstChild) {
+                $style->removeChild($style->firstChild);
+            }
+            $style->appendChild($style->ownerDocument->createTextNode(str_replace('</', '<\/', $text)));
+        }
+    }
+
+    private function isUnsafeAttribute(\DOMElement $element, \DOMAttr $attribute): bool {
+        $name = strtolower($attribute->name);
+        $local = strtolower($attribute->localName ?? $attribute->name);
+        $tag = strtolower($element->localName ?? $element->nodeName);
+
+        if (str_starts_with($name, 'on') || str_starts_with($local, 'on')) {
+            return true;
+        }
+        if (in_array($name, self::DROPPED_ATTRIBUTES, true) || in_array($local, self::DROPPED_ATTRIBUTES, true)) {
+            return true;
+        }
+
+        if ($name === 'style' || $local === 'style') {
+            $css = strtolower(preg_replace('/[\x00-\x20"\']/', '', $attribute->value) ?? '');
+            return str_contains($css, 'expression(') || str_contains($css, 'url(javascript') || str_contains($css, '-moz-binding');
+        }
+
+        if (in_array($name, self::URL_ATTRIBUTES, true) || in_array($local, self::URL_ATTRIBUTES, true)) {
+            $url = strtolower(preg_replace('/[\x00-\x20]/', '', $attribute->value) ?? '');
+            if (preg_match('/^(javascript|vbscript|file):/', $url)) {
+                return true;
+            }
+            if (str_starts_with($url, 'data:')) {
+                return !($tag === 'img' && $name === 'src' && str_starts_with($url, 'data:image/'));
+            }
+        }
+
+        return false;
     }
 
     private function previewCss(): string {

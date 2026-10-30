@@ -111,7 +111,34 @@
     };
   }
 
+  // Pure check used by the live-mapper ack listener: an ack only counts for
+  // the click whose selection_id it echoes back. No DOM access.
+  function isMatchingAck(pendingSelectionId, data) {
+    return typeof pendingSelectionId === 'string' && pendingSelectionId !== '' &&
+      !!data && data.type === 'element_selected_ack' && data.selection_id === pendingSelectionId;
+  }
+
+  // 16 lowercase hex chars (8 random bytes) identifying one click.
+  function newSelectionId() {
+    var hex = '';
+    var i;
+    if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+      var bytes = new Uint8Array(8);
+      window.crypto.getRandomValues(bytes);
+      for (i = 0; i < bytes.length; i++) {
+        var pair = bytes[i].toString(16);
+        hex += pair.length < 2 ? '0' + pair : pair;
+      }
+    } else {
+      hex = Math.random().toString(16).slice(2, 18);
+    }
+    while (hex.length < 16) hex += '0';
+    return hex;
+  }
+
   window.TagVerityMapperSnippet = {
+    isMatchingAck: isMatchingAck,
+    newSelectionId: newSelectionId,
     escapeCss: escapeCss,
     stableValue: stableValue,
     usefulClasses: usefulClasses,
@@ -200,6 +227,7 @@
     var selected = null;
     var expiryTimer = null;
     var ackTimer = null;
+    var pendingSelectionId = '';
 
     function isUiElement(target) {
       return !!(target && target.closest && target.closest('[data-tagverity-ui]'));
@@ -218,6 +246,8 @@
     function onAckMessage(event) {
       if (event.source !== window.opener || event.origin !== apiBase) return;
       if (!event.data || event.data.type !== 'element_selected_ack') return;
+      if (!isMatchingAck(pendingSelectionId, event.data)) return;
+      pendingSelectionId = '';
       if (ackTimer) { clearTimeout(ackTimer); ackTimer = null; }
       showConfirmation();
     }
@@ -257,9 +287,11 @@
         return;
       }
 
+      pendingSelectionId = window.TagVerityMapperSnippet.newSelectionId();
       window.opener.postMessage({
         source: 'tagverity-live-mapper',
         type: 'element_selected',
+        selection_id: pendingSelectionId,
         payload: payload
       }, apiBase);
       if (ackTimer) clearTimeout(ackTimer);
