@@ -213,6 +213,33 @@ Audit request
 - Monthly audit credits count queued, running, complete and partial audits, so
   a queued audit cannot be started beyond the plan limit.
 
+### Audit history, domain map and PDF export
+
+- Account-wide audit history page (`audits.php`) listing every audit run across
+  the account's clients, newest first, with client and status filters and
+  pagination. Invalid filter values are ignored, and clients from other accounts
+  are never listed.
+- Audit credits are counted per account per calendar month across all clients
+  (`src/AuditCredits.php`). Queued audits count, `-1` means unlimited, and
+  trigger-audit, the dashboard tile and billing all use the same rule.
+- Domain discovery and ownership confirmation (`src/DomainMap.php`; migration
+  014 in `run-migrations.php`). Domains come from linked GA4 streams and the
+  latest site scan, and users answer whether each one is theirs, not theirs, or
+  under investigation.
+- The domain map page (`domain-map.php`) shows a server-rendered diagram of GTM
+  containers, GA4 properties and domains, plus a list for answering ownership
+  and adding a website by hand. The diagram is hidden on narrow screens.
+- Audits use those answers. A domain marked not yours or under investigation
+  raises a critical finding, and a domain marked yours counts as verified for the
+  unexpected-domain check. Ownership is self-reported, not DNS-verified.
+- PDF export (`audit-report-pdf.php`) renders a complete, partial or failed audit
+  as an A4 PDF using Dompdf, with no remote assets. It is available on every
+  plan; developer notes stay plan-gated inside the PDF.
+- The Monitoring and BigQuery pages (`monitoring.php`, `bigquery.php`) are honest
+  placeholders. They describe the planned feature, name the plans that will
+  include it, and state that it is not available yet. They have no forms or
+  controls and run no checks.
+
 ### Scan-led Onboarding MVP
 
 - Authenticated, client-scoped tracking setup page
@@ -392,13 +419,8 @@ publish externally.
 
 ### Phase 1 Blockers
 
-- `domain-map.php` is a text stub; the SVG relationship map and domain
-  verification workflow are not implemented.
 - Billing pages exist, but `api/create-checkout.php` and the Stripe webhook flow
   do not exist.
-- PDF export is a placeholder link.
-- Sidebar and dashboard links reference missing `audits.php`, `monitoring.php`,
-  and `bigquery.php` pages.
 
 ### Later Phases
 
@@ -549,6 +571,7 @@ When implementation work changes the project:
 | 2026-10-27 | Approved the live visual tagging design (`docs/superpowers/specs/2026-10-27-live-visual-tagging-design.md`): a dormant install snippet activated by a short-lived token, reusing the static mapper's selector logic and the existing dashboard save flow via `window.opener.postMessage` rather than a new save path. Matched the product's existing self-reported domain-trust level rather than requiring new DNS/meta-tag ownership verification. |
 | 2026-10-27 | Discovered during implementation that comparing only a scan's root hostname (not the full set of hosts/origins a scan actually touched) breaks both the new live flow and the existing static mapper for any site whose root redirects to a different host (e.g. apex to www) — fixed by scoping an allowlist to the root host plus only its apex/www sibling, deliberately excluding any other host a scan's redirects may have passed through. |
 | 2026-10-30 | Connecting Google no longer imports resources automatically; users choose which GA4 properties and GTM containers to link to each client, and an account may connect several Google logins. |
+| 2026-10-30 | Audit credits are counted per account per month across all clients. |
 
 ## Change Log
 
@@ -784,3 +807,27 @@ When implementation work changes the project:
   The dashboard credit tile now uses the same rule.
 - Removed the resolved OAuth identity, auto-discovery, empty-dataset, credit
   query, dashboard polling and `google_sub` items from this record.
+
+### 2026-10-30 (Phase 2 — A2)
+
+- Added `audits.php`, an account-wide audit history with client and status
+  filters and pagination, and linked it from the sidebar and dashboard.
+- Moved audit credits to a per-account monthly count across all clients
+  (`src/AuditCredits.php`), so an account with several clients cannot exceed its
+  plan limit. The dashboard tile, trigger-audit and billing use the same rule.
+- Added domain discovery and ownership confirmation. Migration 014 adds the
+  domain host, source, confirmation and key columns; `src/DomainMap.php`
+  discovers domains from GA4 streams and the latest site scan; and
+  `domain-map.php` replaces the text stub with a server-rendered diagram and a
+  list for answering whether each domain is yours.
+- Audits read those answers. Domains marked not yours or under investigation
+  raise a critical finding, and domains marked yours count as verified for the
+  unexpected-domain check.
+- Replaced the placeholder PDF link with `audit-report-pdf.php`, a Dompdf export
+  of complete, partial and failed audits on every plan. Developer notes remain
+  plan-gated inside the PDF.
+- Replaced the dead `monitoring.php` and `bigquery.php` links with honest "Not
+  available yet" pages that name the plans they will be included in. They contain
+  no forms or fake controls; the features themselves remain in Later Phases.
+- Added `tests/ComingSoonPagesTest.php`, which checks both pages and asserts that
+  every page linked from `includes/sidebar.php` exists on disk.
