@@ -25,7 +25,7 @@ use Google\Service\CloudResourceManager;
  * Every method wraps its API call in try/catch — failures return null or []
  * rather than crashing the audit job.
  */
-class GoogleApiClient implements AuditDataSource
+class GoogleApiClient implements AuditDataSource, DiscoverySource
 {
     private GoogleClient $client;
 
@@ -59,37 +59,38 @@ class GoogleApiClient implements AuditDataSource
     // ── GTM Management API ────────────────────────────────────────────────────
 
     /**
-     * List all GTM accounts + containers accessible via this OAuth token.
+     * List the GTM accounts visible to this login, each with its containers. Throws on failure.
      *
-     * @return array[]  Array of container summaries from the GTM API
+     * @return array[]  [['account_id', 'account_name', 'containers' => [['container_id', 'public_id', 'name']]]]
+     * @throws \Throwable
      */
-    public function listGtmContainers(): array
+    public function listGtmAccountsAndContainers(): array
     {
-        try {
-            $gtm      = new TagManager($this->client);
-            $response = $gtm->accounts->listAccounts();
-            $accounts = $response->getAccount() ?? [];
-            $results  = [];
+        $gtm      = new TagManager($this->client);
+        $accounts = $gtm->accounts->listAccounts()->getAccount() ?? [];
+        $results  = [];
 
-            foreach ($accounts as $account) {
-                $accountPath  = 'accounts/' . $account->getAccountId();
-                $containers   = $gtm->accounts_containers->listAccountsContainers($accountPath)->getContainer() ?? [];
+        foreach ($accounts as $account) {
+            $containers = $gtm->accounts_containers
+                ->listAccountsContainers('accounts/' . $account->getAccountId())
+                ->getContainer() ?? [];
 
-                foreach ($containers as $container) {
-                    $results[] = [
-                        'account_id'   => $account->getAccountId(),
-                        'container_id' => $container->getContainerId(),
-                        'public_id'    => $container->getPublicId(), // GTM-XXXXX
-                        'name'         => $container->getName(),
-                        'domain_name'  => $container->getDomainName() ?? [],
-                    ];
-                }
+            $list = [];
+            foreach ($containers as $container) {
+                $list[] = [
+                    'container_id' => (string) $container->getContainerId(),
+                    'public_id'    => (string) $container->getPublicId(), // GTM-XXXXX
+                    'name'         => (string) $container->getName(),
+                ];
             }
-            return $results;
-        } catch (\Throwable $e) {
-            error_log('[GTMAuditor][GTM API] listGtmContainers: ' . $e->getMessage());
-            return [];
+            $results[] = [
+                'account_id'   => (string) $account->getAccountId(),
+                'account_name' => (string) $account->getName(),
+                'containers'   => $list,
+            ];
         }
+
+        return $results;
     }
 
     /**
@@ -137,61 +138,78 @@ class GoogleApiClient implements AuditDataSource
         ];
     }
 
-    // ── GA4 Admin API — for auto-discovery ───────────────────────────────────
+    // ── GA4 Admin API — for discovery ────────────────────────────────────────
 
     /**
-     * List all GA4 properties + streams accessible via this OAuth token.
-     * Used during auto-discovery after OAuth connect.
+     * List the GA4 accounts and their properties visible to this login. Throws on failure.
      *
-     * @return array[]  Each item: {property_id, display_name, streams: [{stream_id, measurement_id, stream_url}]}
+     * @return array[]  [['account_id', 'account_name', 'properties' => [['property_id', 'display_name']]]]
+     * @throws \Throwable
      */
-    public function listGa4PropertiesAndStreams(): array
+    public function listGa4AccountSummaries(): array
     {
-        try {
-            $admin      = new AnalyticsAdmin($this->client);
-            $properties = [];
-            $pageToken  = null;
+        $admin     = new AnalyticsAdmin($this->client);
+        $accounts  = [];
+        $pageToken = null;
 
-            // Paginate through all properties
-            do {
-                $params   = ['pageSize' => 200];
-                if ($pageToken) $params['pageToken'] = $pageToken;
-                $response  = $admin->properties->listProperties($params);
-                $propList  = $response->getProperties() ?? [];
+        do {
+            $params = ['pageSize' => 200];
+            if ($pageToken) $params['pageToken'] = $pageToken;
+            $response = $admin->accountSummaries->listAccountSummaries($params);
 
-                foreach ($propList as $prop) {
-                    $propertyId = str_replace('properties/', '', $prop->getName());
-                    $streams    = [];
-
-                    try {
-                        $streamsResp = $admin->properties_dataStreams->listPropertiesDataStreams("properties/{$propertyId}");
-                        foreach ($streamsResp->getDataStreams() ?? [] as $stream) {
-                            $webData = $stream->getWebStreamData();
-                            $streams[] = [
-                                'stream_id'      => str_replace("properties/{$propertyId}/dataStreams/", '', $stream->getName()),
-                                'measurement_id' => $webData ? $webData->getMeasurementId() : null,
-                                'stream_url'     => $webData ? $webData->getDefaultUri() : null,
-                            ];
-                        }
-                    } catch (\Throwable $e) {
-                        error_log('[GTMAuditor][GA4 Admin] streams for ' . $propertyId . ': ' . $e->getMessage());
-                    }
-
+            foreach ($response->getAccountSummaries() ?? [] as $summary) {
+                $properties = [];
+                foreach ($summary->getPropertySummaries() ?? [] as $property) {
                     $properties[] = [
-                        'property_id'  => $propertyId,
-                        'display_name' => $prop->getDisplayName(),
-                        'streams'      => $streams,
+                        'property_id'  => str_replace('properties/', '', (string) $property->getProperty()),
+                        'display_name' => (string) $property->getDisplayName(),
                     ];
                 }
+                $accounts[] = [
+                    'account_id'   => str_replace('accounts/', '', (string) $summary->getAccount()),
+                    'account_name' => (string) $summary->getDisplayName(),
+                    'properties'   => $properties,
+                ];
+            }
 
-                $pageToken = $response->getNextPageToken();
-            } while ($pageToken);
+            $pageToken = $response->getNextPageToken();
+        } while ($pageToken);
 
-            return $properties;
-        } catch (\Throwable $e) {
-            error_log('[GTMAuditor][GA4 Admin] listProperties: ' . $e->getMessage());
-            return [];
-        }
+        return $accounts;
+    }
+
+    /**
+     * Web data streams of one GA4 property. App streams are skipped. Throws on failure.
+     *
+     * @return array[]  [['stream_id', 'measurement_id', 'stream_url']]
+     * @throws \Throwable
+     */
+    public function listGa4Streams(string $propertyId): array
+    {
+        $admin     = new AnalyticsAdmin($this->client);
+        $parent    = "properties/{$propertyId}";
+        $streams   = [];
+        $pageToken = null;
+
+        do {
+            $params = ['pageSize' => 200];
+            if ($pageToken) $params['pageToken'] = $pageToken;
+            $response = $admin->properties_dataStreams->listPropertiesDataStreams($parent, $params);
+
+            foreach ($response->getDataStreams() ?? [] as $stream) {
+                $webData = $stream->getWebStreamData();
+                if ($webData === null) continue;
+                $streams[] = [
+                    'stream_id'      => str_replace($parent . '/dataStreams/', '', (string) $stream->getName()),
+                    'measurement_id' => (string) $webData->getMeasurementId(),
+                    'stream_url'     => $webData->getDefaultUri(),
+                ];
+            }
+
+            $pageToken = $response->getNextPageToken();
+        } while ($pageToken);
+
+        return $streams;
     }
 
     // ── GA4 Data API — for audit checks ──────────────────────────────────────
