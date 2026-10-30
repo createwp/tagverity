@@ -369,7 +369,8 @@
     group.appendChild(list);
 
     selectAll.addEventListener('change', function () {
-      group.querySelectorAll('input.picker-item-check:not(:disabled)').forEach(function (box) {
+      // Only rows the search currently shows, so a filtered select-all never picks up hidden items.
+      visibleSelectableBoxes(group).forEach(function (box) {
         box.checked = selectAll.checked;
       });
       syncAll();
@@ -430,6 +431,7 @@
       group.hidden = visible === 0;
       visibleTotal += visible;
     });
+    syncAll();
     var noMatch = pickerBody.querySelector('.picker-no-match');
     if (query !== '' && visibleTotal === 0 && picker.data) {
       if (!noMatch) {
@@ -441,11 +443,17 @@
     }
   }
 
-  // Keeps every account's select-all checkbox in step with its items.
+  // Selectable checkboxes in an account that the current search shows (not linked, not hidden).
+  function visibleSelectableBoxes(group) {
+    return Array.prototype.slice.call(group.querySelectorAll('input.picker-item-check:not(:disabled)'))
+      .filter(function (box) { return !box.closest('.picker-item').hidden; });
+  }
+
+  // Keeps every account's select-all checkbox in step with the visible items.
   function syncAll() {
     pickerBody.querySelectorAll('.picker-account').forEach(function (group) {
       var selectAll = group.querySelector('.picker-select-all');
-      var boxes = Array.prototype.slice.call(group.querySelectorAll('input.picker-item-check:not(:disabled)'));
+      var boxes = visibleSelectableBoxes(group);
       var checked = boxes.filter(function (box) { return box.checked; }).length;
       selectAll.disabled = boxes.length === 0;
       selectAll.checked = boxes.length > 0 && checked === boxes.length;
