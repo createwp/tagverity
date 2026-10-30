@@ -2,7 +2,7 @@
 // Migration 013 test: runs run-migrations.php twice from the CLI and checks the
 // audit outcome, source status and resource linking schema it adds.
 
-$php = 'C:/wamp64/bin/php/php8.1.0/php.exe';
+$php = PHP_BINARY;
 $root = dirname(__DIR__);
 $runner = $root . '/run-migrations.php';
 
@@ -25,7 +25,7 @@ function fail_migration013(string $message): void {
 for ($run = 1; $run <= 2; $run++) {
     $output = [];
     $exitCode = 0;
-    exec($php . ' ' . escapeshellarg($runner) . ' 2>&1', $output, $exitCode);
+    exec(escapeshellarg($php) . ' ' . escapeshellarg($runner) . ' 2>&1', $output, $exitCode);
     $text = implode("\n", $output);
     if (strpos($text, '"ok":true') === false) {
         fail_migration013("Migration run {$run} did not report ok:true. Output: {$text}");
