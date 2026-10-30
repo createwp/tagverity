@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../includes/permissions.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/rate-limit.php';
+require_once __DIR__ . '/../src/AuditCredits.php';
 
 header('Content-Type: application/json');
 
@@ -14,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // CSRF check
-if (empty($_POST['csrf_token']) || $_POST['csrf_token'] !== ($_SESSION['csrf_token'] ?? '')) {
+if (empty($_POST['csrf_token']) || !hash_equals((string)($_SESSION['csrf_token'] ?? ''), (string)$_POST['csrf_token'])) {
     http_response_code(403);
     echo json_encode(['error' => 'invalid_csrf']);
     exit;
@@ -27,11 +28,7 @@ $client    = assert_client_access($client_id); // Exits 403 if not owned
 rate_limit('audit_trigger', (string)$user['id'], 5, 60);
 
 // Check audit credit balance
-$used = (int)db()->prepare(
-    "SELECT COUNT(*) FROM audit_jobs
-     WHERE client_id = ? AND status IN ('queued','running','complete')
-     AND MONTH(started_at) = MONTH(NOW()) AND YEAR(started_at) = YEAR(NOW())"
-)->execute([$client_id]) ? db()->query("SELECT FOUND_ROWS()")->fetchColumn() : 0;
+$used = GTMAuditor\AuditCredits::usedThisMonth(db(), $client_id);
 
 $limit = plan_limit('audit_credits');
 if ($used >= $limit) {

@@ -203,19 +203,19 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Polling: auto-refresh page when a running audit job completes ────────────
 
 /**
- * Poll /api/job-status.php every 8 seconds if there are any 'running' status dots.
- * When all jobs complete, reload the page to show fresh results.
+ * Poll /api/job-status.php every 8 seconds if there are any 'running' or 'queued' status dots.
+ * When all jobs finish, reload the page to show fresh results.
  */
 (function initAuditPoller() {
-  const runningDots = document.querySelectorAll('.status-dot.running');
-  if (!runningDots.length) return;
+  const activeDots = document.querySelectorAll('.status-dot.running, .status-dot.queued');
+  if (!activeDots.length) return;
 
   let pollInterval = setInterval(async () => {
     try {
       const res  = await fetch('api/job-status.php');
       const data = await res.json();
-      // If no more running jobs → reload to show results
-      if (!data.has_running) {
+      // If no more queued or running jobs → reload to show results
+      if (!data.has_active) {
         clearInterval(pollInterval);
         showToast('Audit complete! Refreshing results…', 'success');
         setTimeout(() => location.reload(), 1500);
