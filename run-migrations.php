@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/src/DomainMap.php';
 
 if (PHP_SAPI !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -477,6 +478,95 @@ try {
     }
     error_log('Migration 013 failed: ' . $e->getMessage());
     $results[] = ['label' => '013 - real audit data and resource linking', 'ok' => false, 'msg' => $e->getMessage()];
+}
+
+// Migration 014: domain discovery and ownership confirmation
+try {
+    $columnExists = function (string $table, string $column) use ($pdo): bool {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+        );
+        $stmt->execute([$table, $column]);
+        return (int)$stmt->fetchColumn() > 0;
+    };
+    $indexExists = function (string $table, string $index) use ($pdo): bool {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?"
+        );
+        $stmt->execute([$table, $index]);
+        return (int)$stmt->fetchColumn() > 0;
+    };
+
+    // domains: normalised host, where the domain came from, and the client's ownership answer
+    $domainColumns = [
+        'host' => "VARCHAR(255) NOT NULL DEFAULT ''",
+        'source' => "ENUM('ga4_stream','site_scan','manual') NOT NULL DEFAULT 'manual'",
+        'confirmation' => "ENUM('unconfirmed','yours','not_yours','investigate') NOT NULL DEFAULT 'unconfirmed'",
+        'confirmed_at' => "DATETIME NULL",
+    ];
+    foreach ($domainColumns as $column => $definition) {
+        if (!$columnExists('domains', $column)) {
+            $pdo->exec("ALTER TABLE domains ADD COLUMN {$column} {$definition}");
+        }
+    }
+
+    // Backfill host from url with the same rules as DomainMap::normaliseHost(). A url that does not
+    // normalise gets a placeholder with no dot, which no real host can be, so the key cannot collide.
+    $unfilled = $pdo->query("SELECT id, url FROM domains WHERE host = ''")->fetchAll(PDO::FETCH_ASSOC);
+    if ($unfilled) {
+        $setHost = $pdo->prepare("UPDATE domains SET host = ? WHERE id = ?");
+        foreach ($unfilled as $row) {
+            $host = \GTMAuditor\DomainMap::normaliseHost((string)$row['url']);
+            $setHost->execute([$host ?? 'invalid-' . $row['id'], $row['id']]);
+        }
+    }
+
+    // Remove duplicate domains (keep lowest id) and their dependants before the unique key.
+    if (!$indexExists('domains', 'uq_domains_client_host')) {
+        $domainKeep = "(SELECT client_id, host, MIN(id) AS keep_id
+                        FROM domains GROUP BY client_id, host HAVING COUNT(*) > 1) k";
+        $sameDuplicate = "k.client_id = dup.client_id AND k.host = dup.host AND dup.id <> k.keep_id";
+        $pdo->beginTransaction();
+        $pdo->exec(
+            "DELETE dc FROM domain_containers dc
+             JOIN domains dup ON dup.id = dc.domain_id
+             JOIN {$domainKeep} ON {$sameDuplicate}"
+        );
+        $pdo->exec(
+            "DELETE dp FROM domain_ga4_properties dp
+             JOIN domains dup ON dup.id = dp.domain_id
+             JOIN {$domainKeep} ON {$sameDuplicate}"
+        );
+        $pdo->exec(
+            "DELETE cd FROM cross_domain_configs cd
+             JOIN domains dup ON dup.id = cd.primary_domain_id
+             JOIN {$domainKeep} ON {$sameDuplicate}"
+        );
+        $pdo->exec(
+            "DELETE cd FROM cross_domain_configs cd
+             JOIN domains dup ON dup.id = cd.linked_domain_id
+             JOIN {$domainKeep} ON {$sameDuplicate}"
+        );
+        $pdo->exec(
+            "DELETE dup FROM domains dup
+             JOIN {$domainKeep} ON {$sameDuplicate}"
+        );
+        $pdo->commit();
+        $pdo->exec(
+            "ALTER TABLE domains
+             ADD UNIQUE KEY uq_domains_client_host (client_id, host)"
+        );
+    }
+
+    $results[] = ['label' => '014 - domain discovery and confirmation', 'ok' => true, 'msg' => 'OK'];
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log('Migration 014 failed: ' . $e->getMessage());
+    $results[] = ['label' => '014 - domain discovery and confirmation', 'ok' => false, 'msg' => $e->getMessage()];
 }
 
 echo json_encode(['ok' => !in_array(false, array_column($results, 'ok'), true), 'results' => $results]);
