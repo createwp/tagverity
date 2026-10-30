@@ -54,6 +54,26 @@ document.addEventListener('DOMContentLoaded', function () {
     if (platform === 'google_ads' && (!value || value.length > 100)) return 'Google Ads conversion action names must contain no more than 100 characters.';
     return '';
   }
+  // Mirrors src/ManualParameters.php; the server stays authoritative.
+  const MANUAL_PARAMETER_LIMIT = 10;
+  const MANUAL_PARAMETER_IDENTIFIER_NAMES = ['email', 'phone', 'first_name', 'last_name', 'name', 'full_name', 'address', 'postcode', 'zip', 'dob', 'user_id', 'ip'];
+  const MANUAL_PARAMETER_IDENTIFIER_FRAGMENTS = ['email', 'phone', 'password'];
+  function manualParameterProblem(name, value, manual, available) {
+    if (manual.length >= MANUAL_PARAMETER_LIMIT) return {field: 'name', message: 'An event can have up to 10 custom parameters.'};
+    const identifierLike = MANUAL_PARAMETER_IDENTIFIER_NAMES.indexOf(name) !== -1
+      || MANUAL_PARAMETER_IDENTIFIER_FRAGMENTS.some(function (fragment) { return name.indexOf(fragment) !== -1; });
+    if (!/^[a-z][a-z0-9_]{0,39}$/.test(name) || identifierLike) {
+      return {field: 'name', message: "Custom parameter names must start with a letter, use lowercase letters, numbers and underscores, and can't be personal information like email or phone."};
+    }
+    if (available.indexOf(name) !== -1 || manual.some(function (item) { return item.name === name; })) {
+      return {field: 'name', message: 'That parameter already exists for this event.'};
+    }
+    if (!value || Array.from(value).length > 100 || /[\x00-\x1F\x7F]/.test(value)) {
+      return {field: 'value', message: 'Custom values must be 1–100 characters of plain text.'};
+    }
+    return null;
+  }
+
   function triggerLabel(trigger) {
     const labels = {page_view: 'Page view', element_click: 'Element click', element_visibility: 'Element visibility', form_lifecycle: 'Form journey', data_layer_event: 'Data layer event', site_search: 'Site search', result_interaction: 'Result interaction', dom_value_extraction: 'Value extraction'};
     return labels[trigger.type] || trigger.type || 'Trigger needs review';
@@ -151,6 +171,22 @@ document.addEventListener('DOMContentLoaded', function () {
     const form = node('form', 'card tracking-event-card' + (expanded ? ' expanded' : ''));
     form.dataset.eventKey = event.event_key;
 
+    // One state object per card: chips and destination Sends read and write it; saveEvent() sends it.
+    const cardState = {
+      parameters: event.selected_parameters.slice(),
+      manual: (event.manual_parameters || []).map(function (item) { return {name: item.name, value: item.value}; }),
+      destinations: {}
+    };
+    (event.destinations || []).forEach(function (destination) {
+      cardState.destinations[destination.platform] = {
+        enabled: destination.enabled,
+        event_name: destination.event_name,
+        parameters: (destination.parameters || []).filter(function (item) { return item.selected; }).map(function (item) { return item.canonical_name; }),
+        identifiers: (destination.user_identifiers || []).filter(function (item) { return item.selected; }).map(function (item) { return item.canonical_name; })
+      };
+    });
+    form._cardState = cardState;
+
     const header = node('div', 'tracking-event-card-header');
     const identity = node('div', 'tracking-event-identity');
     const status = node('span', 'tracking-status ' + (event.kind === 'base' ? 'proposed' : 'configured'), statusLabel(event));
@@ -194,7 +230,8 @@ document.addEventListener('DOMContentLoaded', function () {
       ? 'Uses your mapper name. Parameter template inherited from system event: ' + event.system_event_name + '.'
       : 'Recommended name: ' + event.recommended_name));
     if (event.kind === 'base' && event.recommendation_when) nameGroup.appendChild(node('p', 'tracking-recommendation-reason', event.recommendation_when));
-    config.appendChild(nameGroup);
+    const topRow = node('div', 'tracking-config-row');
+    topRow.appendChild(nameGroup);
 
     const groupField = node('div', 'form-group');
     const groupLabel = node('label', 'form-label', 'Business meaning');
@@ -207,7 +244,8 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     groupField.appendChild(groupLabel); groupField.appendChild(groupSelect);
     groupField.appendChild(node('p', 'form-help', 'A neutral classification shared by every destination.'));
-    config.appendChild(groupField);
+    topRow.appendChild(groupField);
+    config.appendChild(topRow);
 
     if ((event.available_trigger_intents || []).length) {
       const triggerGroup = node('div', 'form-group');
@@ -229,20 +267,156 @@ document.addEventListener('DOMContentLoaded', function () {
     params.appendChild(node('legend', '', event.kind === 'mapping'
       ? 'Parameters inherited from ' + event.system_event_name
       : 'Parameters this event can capture'));
-    if (!event.available_parameters.length) {
-      params.appendChild(node('p', 'form-help', 'This event does not capture additional parameters.'));
-    } else {
-      const choices = node('div', 'tracking-parameter-grid');
-      event.available_parameters.forEach(function (parameter) {
-        const label = node('label', 'tracking-parameter');
-        const checkbox = node('input');
-        checkbox.type = 'checkbox'; checkbox.value = parameter; checkbox.dataset.role = 'parameter';
-        checkbox.checked = event.selected_parameters.indexOf(parameter) !== -1;
-        label.appendChild(checkbox); label.appendChild(node('span', '', parameter)); choices.appendChild(label);
-      });
-      params.appendChild(choices);
-    }
+    const chips = node('div', 'tracking-parameter-chips');
+    chips.dataset.role = 'parameter-chips';
+    params.appendChild(chips);
+
+    const addWrap = node('div', 'tracking-parameter-add');
+    const addButton = node('button', 'chip-add', '+ Add parameter');
+    addButton.type = 'button';
+    addButton.setAttribute('aria-haspopup', 'true');
+    addButton.dataset.role = 'parameter-add';
+    const addPanel = node('div', 'tracking-parameter-popover');
+    addPanel.dataset.role = 'parameter-popover';
+    addPanel.appendChild(node('p', 'tracking-parameter-popover-title', 'Captured automatically'));
+    const autoList = node('ul', 'tracking-parameter-options');
+    autoList.dataset.role = 'parameter-options';
+    addPanel.appendChild(autoList);
+
+    const customBox = node('div', 'tracking-parameter-custom');
+    customBox.appendChild(node('p', 'tracking-parameter-popover-title', 'Custom value'));
+    const customNameGroup = node('div', 'form-group');
+    const customNameLabel = node('label', 'form-label', 'Parameter name');
+    const customNameInput = node('input', 'form-input font-mono');
+    customNameInput.type = 'text'; customNameInput.autocomplete = 'off';
+    customNameInput.dataset.role = 'custom-parameter-name';
+    customNameInput.id = 'parameter-name-' + safeId(event.event_key); customNameLabel.htmlFor = customNameInput.id;
+    customNameGroup.appendChild(customNameLabel); customNameGroup.appendChild(customNameInput);
+    const customValueGroup = node('div', 'form-group');
+    const customValueLabel = node('label', 'form-label', 'Value');
+    const customValueInput = node('input', 'form-input');
+    customValueInput.type = 'text'; customValueInput.autocomplete = 'off';
+    customValueInput.dataset.role = 'custom-parameter-value';
+    customValueInput.id = 'parameter-value-' + safeId(event.event_key); customValueLabel.htmlFor = customValueInput.id;
+    customValueGroup.appendChild(customValueLabel); customValueGroup.appendChild(customValueInput);
+    const customError = node('p', 'tracking-parameter-error');
+    customError.hidden = true; customError.setAttribute('role', 'alert');
+    const customAdd = node('button', 'btn btn-secondary btn-sm', 'Add');
+    customAdd.type = 'button'; customAdd.dataset.role = 'custom-parameter-add';
+    customBox.appendChild(customNameGroup); customBox.appendChild(customValueGroup);
+    customBox.appendChild(customError); customBox.appendChild(customAdd);
+    addPanel.appendChild(customBox);
+
+    addWrap.appendChild(addButton); addWrap.appendChild(addPanel);
+    params.appendChild(addWrap);
     config.appendChild(params);
+
+    const popover = window.TagVerityUI.bindPopover(addButton, addPanel);
+    function closeAddPanel() { if (popover) popover.close(); }
+
+    function chipItems() {
+      return cardState.parameters.map(function (name) { return {kind: 'auto', name: name}; })
+        .concat(cardState.manual.map(function (item) { return {kind: 'manual', name: item.name, value: item.value}; }));
+    }
+
+    function renderParameterOptions() {
+      clear(autoList);
+      const available = event.available_parameters || [];
+      const remaining = available.filter(function (name) { return cardState.parameters.indexOf(name) === -1; });
+      if (!remaining.length) {
+        autoList.appendChild(node('li', 'form-help', available.length
+          ? 'Every automatic parameter is already captured.'
+          : 'This event has no automatic parameters.'));
+        return;
+      }
+      remaining.forEach(function (name) {
+        const item = node('li');
+        const option = node('button', 'tracking-parameter-option');
+        option.type = 'button'; option.dataset.parameter = name;
+        option.appendChild(node('code', '', name));
+        option.appendChild(node('span', 'chip-auto', 'auto'));
+        option.addEventListener('click', function () { addAutoParameter(name); });
+        item.appendChild(option); autoList.appendChild(item);
+      });
+    }
+
+    function renderParameters() {
+      clear(chips);
+      const items = chipItems();
+      items.forEach(function (item) {
+        const chip = node('span', 'chip');
+        if (item.kind === 'manual') {
+          chip.appendChild(node('code', 'tracking-chip-value', item.name + ' = ' + item.value));
+          chip.appendChild(node('span', 'chip-auto', 'custom'));
+        } else {
+          chip.appendChild(node('code', 'tracking-chip-value', item.name));
+        }
+        const remove = node('button', 'chip-remove');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', 'Remove ' + item.name);
+        remove.title = 'Remove ' + item.name;
+        remove.appendChild(appIcon('x'));
+        remove.addEventListener('click', function () { removeParameter(item.kind, item.name); });
+        chip.appendChild(remove);
+        chips.appendChild(chip);
+      });
+      if (!items.length) chips.appendChild(node('p', 'form-help', 'No parameters captured yet.'));
+      renderParameterOptions();
+    }
+
+    function removeParameter(kind, name) {
+      const index = chipItems().findIndex(function (item) { return item.kind === kind && item.name === name; });
+      if (kind === 'manual') {
+        cardState.manual = cardState.manual.filter(function (item) { return item.name !== name; });
+      } else {
+        cardState.parameters = cardState.parameters.filter(function (item) { return item !== name; });
+      }
+      Object.keys(cardState.destinations).forEach(function (platform) {
+        const destination = cardState.destinations[platform];
+        destination.parameters = destination.parameters.filter(function (item) { return item !== name; });
+      });
+      Array.from(form.querySelectorAll('[data-role="destination-parameter"]')).forEach(function (toggle) {
+        if (toggle.value === name) toggle.checked = false;
+      });
+      renderParameters();
+      // The next chip slides into the removed chip's place; after the last chip, focus goes to the add button.
+      const removeButtons = chips.querySelectorAll('.chip-remove');
+      (removeButtons[index] || addButton).focus();
+    }
+
+    function addAutoParameter(name) {
+      if (cardState.parameters.indexOf(name) === -1) cardState.parameters.push(name);
+      closeAddPanel();
+      renderParameters();
+      addButton.focus();
+    }
+
+    function addCustomParameter() {
+      const name = customNameInput.value.trim();
+      const value = customValueInput.value.trim();
+      const problem = manualParameterProblem(name, value, cardState.manual, event.available_parameters || []);
+      if (problem) {
+        customError.textContent = problem.message;
+        customError.hidden = false;
+        (problem.field === 'value' ? customValueInput : customNameInput).focus();
+        return;
+      }
+      cardState.manual.push({name: name, value: value});
+      customNameInput.value = ''; customValueInput.value = ''; customError.hidden = true;
+      closeAddPanel();
+      renderParameters();
+      addButton.focus();
+    }
+
+    // Enter adds the custom value; it must not submit the card form.
+    [customNameInput, customValueInput].forEach(function (input) {
+      input.addEventListener('keydown', function (keyEvent) {
+        if (keyEvent.key === 'Enter') { keyEvent.preventDefault(); addCustomParameter(); }
+      });
+      input.addEventListener('input', function () { customError.hidden = true; });
+    });
+    customAdd.addEventListener('click', addCustomParameter);
+    renderParameters();
 
     const destinationFieldset = node('fieldset', 'tracking-destination-fieldset');
     destinationFieldset.appendChild(node('legend', '', 'Destinations'));
@@ -300,13 +474,15 @@ document.addEventListener('DOMContentLoaded', function () {
           parameterToggle.dataset.role = 'destination-parameter';
           parameterToggle.dataset.platform = destination.platform;
           parameterToggle.value = parameter.canonical_name;
-          parameterToggle.disabled = !destination.enabled;
+          parameterToggle.disabled = !destination.enabled || parameter.supported === false;
+          if (parameter.supported === false) parameterToggle.dataset.unsupported = 'true';
           parameterLabel.appendChild(parameterToggle);
           const parameterCopy = node('span');
           parameterCopy.appendChild(node('code', '', parameter.canonical_name));
           parameterCopy.appendChild(node('span', '', '→'));
           parameterCopy.appendChild(node('code', '', parameter.destination_name));
           parameterLabel.appendChild(parameterCopy);
+          if (parameter.supported === false) parameterLabel.appendChild(node('span', 'form-help', 'Not supported by ' + destination.label));
           parameterFieldset.appendChild(parameterLabel);
         });
       }
@@ -357,7 +533,7 @@ document.addEventListener('DOMContentLoaded', function () {
         valueInput.disabled = !toggle.checked;
         recommendationSelect.disabled = !toggle.checked;
         card.querySelectorAll('[data-role="destination-parameter"]').forEach(function (parameterToggle) {
-          parameterToggle.disabled = !toggle.checked;
+          parameterToggle.disabled = !toggle.checked || parameterToggle.dataset.unsupported === 'true';
         });
         card.querySelectorAll('[data-role="destination-identifier"]').forEach(function (identifierToggle) {
           identifierToggle.disabled = !toggle.checked;
@@ -490,14 +666,17 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
     nameInput.classList.remove('invalid');
-    const selectedParameters = Array.from(form.querySelectorAll('[data-role="parameter"]:checked')).map(function (input) { return input.value; });
+    const cardState = form._cardState;
+    const selectedParameters = cardState.parameters.slice();
+    const manualParameters = cardState.manual.map(function (item) { return {name: item.name, value: item.value}; });
+    const routableParameters = selectedParameters.concat(manualParameters.map(function (item) { return item.name; }));
     const eventGroup = form.querySelector('[data-role="event-group"]').value;
     const destinations = Array.from(form.querySelectorAll('[data-role="destination-enabled"]')).map(function (toggle) {
       const platform = toggle.dataset.platform;
       const destinationName = form.querySelector('[data-role="destination-name"][data-platform="' + platform + '"]');
       const parameters = Array.from(form.querySelectorAll('[data-role="destination-parameter"][data-platform="' + platform + '"]:checked'))
         .map(function (parameter) { return parameter.value; })
-        .filter(function (parameter) { return selectedParameters.indexOf(parameter) !== -1; });
+        .filter(function (parameter) { return routableParameters.indexOf(parameter) !== -1; });
       const userIdentifiers = Array.from(form.querySelectorAll('[data-role="destination-identifier"][data-platform="' + platform + '"]:checked'))
         .map(function (identifier) { return identifier.value; });
       return {platform: platform, enabled: toggle.checked, event_name: destinationName.value.trim(), parameters: parameters, user_identifiers: userIdentifiers};
@@ -531,6 +710,7 @@ document.addEventListener('DOMContentLoaded', function () {
           approved_event_name: name,
           enabled: includeInput.checked,
           selected_parameters: selectedParameters,
+          manual_parameters: manualParameters,
           trigger_intent: requestedTriggerIntent,
           event_group: eventGroup,
           destinations: destinations,

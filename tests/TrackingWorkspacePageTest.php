@@ -21,11 +21,31 @@ foreach (['Tags &amp; triggers', 'Configure events, triggers and publishing.', '
 }
 
 $workspaceScript = file_get_contents(__DIR__ . '/../assets/js/tracking-workspace.js');
-foreach (['tracking-icon-action', 'tracking-inclusion-action', 'populateTypeFilters', 'renderPagination', 'tracking-destination-grid', 'destination-enabled', 'destination-recommendation', 'destination-parameter', 'destination-identifier', 'Preview saved payload', 'previewDestinationPayload', 'destinationNameError', 'event-group'] as $expectedScript) {
+foreach (['tracking-icon-action', 'tracking-inclusion-action', 'populateTypeFilters', 'renderPagination', 'tracking-destination-grid', 'destination-enabled', 'destination-recommendation', 'destination-parameter', 'destination-identifier', 'Preview saved payload', 'previewDestinationPayload', 'destinationNameError', 'event-group', 'manual_parameters', 'TagVerityUI.bindPopover(', 'Remove ', 'chip-remove', 'chip-add', 'aria-haspopup', 'Custom value'] as $expectedScript) {
     if (strpos($workspaceScript, $expectedScript) === false) {
         fwrite(STDERR, 'TrackingWorkspace controls are missing: ' . $expectedScript . "\n");
         exit(1);
     }
+}
+
+// Parameter chips keep their state in one per-card object that buildEventCard creates and saveEvent reads.
+$buildStart = strpos($workspaceScript, 'function buildEventCard(');
+$buildEnd = strpos($workspaceScript, 'async function archiveMapping(');
+$buildBody = ($buildStart === false || $buildEnd === false) ? '' : substr($workspaceScript, $buildStart, $buildEnd - $buildStart);
+$saveStart = strpos($workspaceScript, 'async function saveEvent(');
+$saveEnd = strpos($workspaceScript, 'function renderPrivacy(');
+$saveBody = ($saveStart === false || $saveEnd === false) ? '' : substr($workspaceScript, $saveStart, $saveEnd - $saveStart);
+if (strpos($buildBody, 'const cardState = {') === false || strpos($buildBody, 'form._cardState = cardState') === false) {
+    fwrite(STDERR, "buildEventCard does not create the per-card cardState object.\n");
+    exit(1);
+}
+if (strpos($saveBody, 'cardState') === false || strpos($saveBody, 'selected_parameters: selectedParameters') === false || strpos($saveBody, 'manual_parameters: manualParameters') === false) {
+    fwrite(STDERR, "saveEvent does not send selected and manual parameters from cardState.\n");
+    exit(1);
+}
+if (strpos($saveBody, 'data-role="parameter"') !== false) {
+    fwrite(STDERR, "saveEvent still reads parameter checkboxes instead of cardState.\n");
+    exit(1);
 }
 if (strpos($workspaceScript, 'buildEventGroup') !== false || strpos($workspaceScript, "buildEventGroup('Mapped by you'") !== false) {
     fwrite(STDERR, "TrackingWorkspace still splits mapped events into a separate visual section.\n");

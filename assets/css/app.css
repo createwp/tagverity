@@ -1836,3 +1836,35 @@ body.scroll-locked { overflow: hidden; }
 .destination-form-footer p { margin: 0; color: var(--text-muted); font-size: 0.74rem; line-height: 1.45; }
 .destination-form-footer .btn { flex: 0 0 auto; }
 @media (max-width: 480px) { .destination-form-footer { flex-direction: column; align-items: stretch; } }
+
+/* ─── Event panel: parameter chips and custom values (C9 Task 4) ─────────── */
+.tracking-config-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.tracking-config-row > .form-group { min-width: 0; }
+@media (max-width: 640px) {
+  .tracking-config-row { grid-template-columns: minmax(0, 1fr); }
+}
+/* The card clips with overflow hidden when collapsed; an open popover must be able to extend past it. */
+.tracking-event-card.expanded { overflow: visible; }
+.tracking-event-card.expanded .tracking-event-card-footer { border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.tracking-parameter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.tracking-parameter-chips .chip { min-width: 0; }
+.tracking-chip-value { min-width: 0; overflow-wrap: anywhere; font-family: 'Roboto Mono', monospace; font-size: 0.72rem; background: none; border: 0; padding: 0; }
+.tracking-parameter-add { position: relative; display: inline-block; margin-top: var(--space-2); }
+.tracking-parameter-popover { width: min(320px, calc(100vw - 2 * var(--space-4))); padding: var(--space-2); }
+.tracking-parameter-popover-title { margin: var(--space-1) var(--space-2) var(--space-2); color: var(--text-secondary); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.tracking-parameter-options { list-style: none; margin: 0; padding: 0; }
+.tracking-parameter-options .form-help { margin: var(--space-1) var(--space-2) var(--space-2); }
+.tracking-parameter-option { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: 44px; padding: 0 var(--space-2); color: var(--text-primary); background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; text-align: left; transition: background var(--duration) var(--ease); }
+.tracking-parameter-option:hover { background: var(--bg-elevated); }
+.tracking-parameter-option code { font-family: 'Roboto Mono', monospace; font-size: 0.78rem; overflow-wrap: anywhere; }
+.tracking-parameter-custom { margin-top: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-1); border-top: 1px solid var(--border); }
+.tracking-parameter-custom .form-group { margin-bottom: var(--space-2); }
+.tracking-parameter-custom .btn { min-height: 44px; }
+.tracking-parameter-error { margin: 0 0 var(--space-2); color: var(--critical); font-size: 0.76rem; }
+.tracking-parameter-error[hidden] { display: none; }
+.tracking-parameter-popover .chip-auto, .tracking-parameter-option .chip-auto { flex: 0 0 auto; }
+.tracking-parameter-fieldset legend { margin-bottom: var(--space-2); }
+.tracking-parameter-fieldset .form-help { margin: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .tracking-parameter-option { transition: none; }
+}

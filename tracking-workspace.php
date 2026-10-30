@@ -52,6 +52,7 @@ if (empty($_SESSION['csrf_token'])) {
 
           <template id="tracking-icon-plus"><?= app_icon('plus') ?></template>
           <template id="tracking-icon-minus"><?= app_icon('minus') ?></template>
+          <template id="tracking-icon-x"><?= app_icon('x') ?></template>
           <template id="tracking-icon-pencil"><?= app_icon('pencil') ?></template>
           <template id="tracking-icon-chevron"><?= app_icon('chevron-right') ?></template>
 
