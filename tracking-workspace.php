@@ -58,49 +58,49 @@ if (empty($_SESSION['csrf_token'])) {
           <template id="tracking-icon-chevron"><?= app_icon('chevron-right') ?></template>
 
           <section class="tracking-event-section">
-              <div class="tracking-browser-toolbar" aria-label="Find and filter tags">
-                <label class="tracking-search-field" for="tracking-event-search">
-                  <?= app_icon('search') ?>
-                  <span class="sr-only">Search tags and triggers</span>
-                  <input id="tracking-event-search" type="search" placeholder="Search tags or triggers" autocomplete="off">
-                </label>
-                <label class="tracking-browser-select" for="tracking-tag-type-filter">
-                  <span>Destination</span>
-                  <select id="tracking-tag-type-filter"><option value="all">All destinations</option></select>
-                </label>
-                <label class="tracking-browser-select" for="tracking-trigger-type-filter">
-                  <span>Trigger type</span>
-                  <select id="tracking-trigger-type-filter"><option value="all">All trigger types</option></select>
-                </label>
+            <div class="tracking-browser-toolbar" aria-label="Find and filter tags">
+              <label class="tracking-search-field" for="tracking-event-search">
+                <?= app_icon('search') ?>
+                <span class="sr-only">Search tags and triggers</span>
+                <input id="tracking-event-search" type="search" placeholder="Search tags or triggers" autocomplete="off">
+              </label>
+              <label class="tracking-browser-select" for="tracking-tag-type-filter">
+                <span>Destination</span>
+                <select id="tracking-tag-type-filter"><option value="all">All destinations</option></select>
+              </label>
+              <label class="tracking-browser-select" for="tracking-trigger-type-filter">
+                <span>Trigger type</span>
+                <select id="tracking-trigger-type-filter"><option value="all">All trigger types</option></select>
+              </label>
+            </div>
+            <div class="tracking-controls-row">
+              <div class="tracking-filters" role="group" aria-label="Filter events">
+                <button class="tracking-filter active" type="button" data-filter="all">All</button>
+                <button class="tracking-filter" type="button" data-filter="recommended">Recommended</button>
+                <button class="tracking-filter" type="button" data-filter="mapped">Mapped</button>
+                <button class="tracking-filter" type="button" data-filter="enabled">Included</button>
+                <button class="tracking-filter" type="button" data-filter="configured">Edited</button>
+                <button class="tracking-filter" type="button" data-filter="disabled">Excluded</button>
               </div>
-              <div class="tracking-controls-row">
-                <div class="tracking-filters" role="group" aria-label="Filter events">
-                  <button class="tracking-filter active" type="button" data-filter="all">All</button>
-                  <button class="tracking-filter" type="button" data-filter="recommended">Recommended</button>
-                  <button class="tracking-filter" type="button" data-filter="mapped">Mapped</button>
-                  <button class="tracking-filter" type="button" data-filter="enabled">Included</button>
-                  <button class="tracking-filter" type="button" data-filter="configured">Edited</button>
-                  <button class="tracking-filter" type="button" data-filter="disabled">Excluded</button>
-                </div>
-                <section class="tracking-workspace-summary" id="tracking-workspace-summary" aria-label="Workspace summary" aria-live="polite"></section>
+              <section class="tracking-workspace-summary" id="tracking-workspace-summary" aria-label="Workspace summary" aria-live="polite"></section>
+            </div>
+            <div class="tracking-event-list" id="tracking-event-list" aria-live="polite"></div>
+            <nav class="tracking-pagination" id="tracking-pagination" aria-label="Tag list pagination">
+              <label class="tracking-page-size" for="tracking-page-size">Show
+                <select id="tracking-page-size">
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+                per page
+              </label>
+              <span class="tracking-page-range" id="tracking-page-range" aria-live="polite"></span>
+              <div class="tracking-page-actions">
+                <button class="tracking-page-button" id="tracking-page-previous" type="button" aria-label="Previous page" title="Previous page"><?= app_icon('arrow-left') ?></button>
+                <span id="tracking-page-number"></span>
+                <button class="tracking-page-button" id="tracking-page-next" type="button" aria-label="Next page" title="Next page"><?= app_icon('arrow-right') ?></button>
               </div>
-              <div class="tracking-event-list" id="tracking-event-list" aria-live="polite"></div>
-              <nav class="tracking-pagination" id="tracking-pagination" aria-label="Tag list pagination">
-                <label class="tracking-page-size" for="tracking-page-size">Show
-                  <select id="tracking-page-size">
-                    <option value="10" selected>10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                  </select>
-                  per page
-                </label>
-                <span class="tracking-page-range" id="tracking-page-range" aria-live="polite"></span>
-                <div class="tracking-page-actions">
-                  <button class="tracking-page-button" id="tracking-page-previous" type="button" aria-label="Previous page" title="Previous page"><?= app_icon('arrow-left') ?></button>
-                  <span id="tracking-page-number"></span>
-                  <button class="tracking-page-button" id="tracking-page-next" type="button" aria-label="Next page" title="Next page"><?= app_icon('arrow-right') ?></button>
-                </div>
-              </nav>
+            </nav>
           </section>
 
           <div class="reveal-drawer-backdrop" hidden></div>

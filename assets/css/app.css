@@ -978,10 +978,6 @@ tbody td {
 .tracking-event-card-body[hidden], .tracking-event-card-footer[hidden] { display: none !important; }
 .tracking-parameter-fieldset { border: 0; }
 .tracking-parameter-fieldset legend { color: var(--text-secondary); font-size: 0.76rem; font-weight: 600; margin-bottom: var(--space-2); }
-.tracking-parameter-grid { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.tracking-parameter { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; color: var(--text-secondary); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-full); font-family: 'Roboto Mono', monospace; font-size: 0.66rem; cursor: pointer; }
-.tracking-parameter:has(input:checked) { color: #ad5419; background: rgba(239,125,50,0.08); border-color: rgba(239,125,50,0.3); }
-.tracking-parameter input { accent-color: var(--brand-accent); }
 .tracking-destination-fieldset { border: 0; margin-top: var(--space-5); }
 .tracking-destination-fieldset legend { color: var(--text-secondary); font-size: 0.82rem; font-weight: 650; }
 .tracking-destination-grid { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
@@ -1017,36 +1013,12 @@ tbody td {
 .destination-connection-card > summary::-webkit-details-marker { display: none; }
 .destination-connection-card > summary:hover { background: var(--bg-elevated); }
 .destination-connection-card[open] > summary { border-bottom: 1px solid var(--border); }
-.destination-platform-mark { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--brand-primary); background: var(--bg-overlay); border: 1px solid #c9dcfb; border-radius: 12px; font-size: 0.7rem; font-weight: 750; letter-spacing: 0.03em; }
 .destination-connection-card h2 { margin: 1px 0 3px; font-size: 0.92rem; }
 .destination-connection-card summary p { margin: 0; color: var(--text-muted); font-size: 0.72rem; line-height: 1.45; }
-.destination-accordion-chevron { display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); transition: transform var(--duration) var(--ease); }
-.destination-accordion-chevron .app-icon { width: 17px; height: 17px; }
-.destination-connection-card[open] .destination-accordion-chevron { transform: rotate(90deg); }
 .destination-status { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; color: var(--text-muted); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-full); font-size: 0.62rem; font-weight: 650; white-space: nowrap; }
 .destination-status.configured { color: var(--warning); background: var(--warning-bg); border-color: var(--warning-border); }
 .destination-status.verified { color: var(--success); background: var(--success-bg); border-color: var(--success-border); }
 .destination-status.error { color: var(--critical); background: var(--critical-bg); border-color: var(--critical-border); }
-.destination-accordion-body { display: grid; grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1.4fr); }
-.destination-setup-guide { padding: var(--space-5); background: var(--bg-elevated); border-right: 1px solid var(--border); }
-.destination-setup-guide h3 { margin: 3px 0 var(--space-4); font-size: 0.92rem; }
-.destination-setup-guide ol { display: grid; gap: var(--space-3); list-style: none; }
-.destination-setup-guide li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--space-2); align-items: start; }
-.destination-setup-guide li > span { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; color: var(--brand-primary); background: var(--bg-overlay); border: 1px solid #c9dcfb; border-radius: var(--radius-full); font-size: 0.64rem; font-weight: 700; }
-.destination-setup-guide li p { color: var(--text-secondary); font-size: 0.72rem; line-height: 1.45; }
-.destination-help-links { display: grid; gap: var(--space-2); padding-top: var(--space-4); margin-top: var(--space-4); border-top: 1px solid var(--border); }
-.destination-help-links a { font-size: 0.7rem; font-weight: 600; }
-.destination-setup-form { min-width: 0; padding: var(--space-5); }
-.destination-auth-state { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--text-secondary); background: var(--bg-overlay); border: 1px solid var(--info-border); border-radius: var(--radius-md); }
-.destination-auth-state.connected { background: var(--success-bg); border-color: var(--success-border); }
-.destination-auth-state.unavailable { background: var(--warning-bg); border-color: var(--warning-border); }
-.destination-auth-state strong { display: block; font-size: 0.76rem; }
-.destination-auth-state p { margin-top: 1px; color: var(--text-muted); font-size: 0.68rem; }
-.destination-connection-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); padding: 0; }
-.destination-connection-field { min-width: 0; }
-.destination-connection-field > span { display: block; margin-bottom: 6px; color: var(--text-secondary); font-size: 0.72rem; font-weight: 650; }
-.destination-connection-field em { color: var(--text-muted); font-size: 0.58rem; font-style: normal; font-weight: 500; }
-.destination-field-help { display: block; min-height: 18px; margin-top: 5px; color: var(--text-muted); font-size: 0.62rem; line-height: 1.4; }
 .destination-connection-card form > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-4); margin-top: var(--space-4); border-top: 1px solid var(--border); }
 .destination-connection-card footer p { margin: 0; color: var(--text-muted); font-size: 0.68rem; }
 .destination-connection-card footer .btn { flex: 0 0 auto; }
@@ -1120,11 +1092,6 @@ tbody td {
   .destination-connection-grid { grid-template-columns: 1fr; }
   .destination-connection-card > summary { grid-template-columns: 42px minmax(0, 1fr) 18px; }
   .destination-status { grid-column: 2; justify-self: start; }
-  .destination-accordion-chevron { grid-column: 3; grid-row: 1 / span 2; }
-  .destination-accordion-body { grid-template-columns: 1fr; }
-  .destination-setup-guide { border-right: 0; border-bottom: 1px solid var(--border); }
-  .destination-auth-state { grid-template-columns: 1fr; align-items: stretch; }
-  .destination-connection-fields { grid-template-columns: 1fr; }
   .destination-connection-card form > footer { align-items: stretch; flex-direction: column; }
   .tracking-payload-columns { grid-template-columns: 1fr; }
   .tracking-path { grid-template-columns: 1fr 1fr; }
