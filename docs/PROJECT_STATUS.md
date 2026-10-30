@@ -421,16 +421,6 @@ reliable:
   project working conventions require application modals.
 - Some navigation and feature interfaces were built ahead of their backing
   endpoints.
-- `SitePreviewRenderer`'s sanitiser relies on libxml's HTML parser/serialiser,
-  which does not always agree with a real browser's HTML5 parser on the same
-  markup. This parser-differential class of bug (mutation XSS) means
-  sanitised-looking output can still execute script once re-parsed by a
-  browser. `preview-site.php`'s CSP now adds `sandbox allow-scripts` as a
-  mitigation (opaque, cookie-less origin if script does execute), but the
-  sanitiser itself should be replaced with an HTML5-aware sanitiser (e.g.
-  HTML Purifier) rather than the current removeNodes/attribute-allowlist
-  approach. Still unresolved; the live visual tagging work below extends this
-  same code family but did not touch the sanitiser itself.
 - Live visual tagging (`assets/js/mapper-snippet.js`,
   `src/MapperSessionManager.php`, `src/ScanHostAllowlist.php`): the
   acknowledgement handshake has no per-click correlation id, so a stale ack
@@ -730,3 +720,17 @@ When implementation work changes the project:
   a genuine `window.opener` relationship in this pass (verified instead by
   two independent code reviews); all test data and temporary files were
   removed afterward.
+
+### 2026-10-30
+
+- Replaced the libxml-based preview sanitiser in `src/SitePreviewRenderer.php`
+  with a `masterminds/html5` parser (now a direct requirement in
+  `composer.json`). Removals match element local names case-insensitively,
+  including inside `svg`/`math`; `on*`, `srcdoc`, `formaction`, `ping`,
+  `target` and `xmlns:xlink` attributes are dropped; URL attributes are
+  normalised before the scheme check; `style` values with `expression(`,
+  `url(javascript` or `-moz-binding` are dropped. `tests/SitePreviewRendererTest.php`
+  re-parses the output for eight mutation-XSS payloads and asserts one preview
+  script, no `on*` attributes and no `javascript:` URLs. The libxml concern is
+  removed from Known Implementation Concerns; the `sandbox allow-scripts` CSP in
+  `preview-site.php` stays as defence in depth.
