@@ -18,5 +18,8 @@
     },
     "config": {
         "optimize-autoloader": true
+    },
+    "scripts": {
+        "test": "@php tests/run.php"
     }
 }
