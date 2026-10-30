@@ -52,6 +52,11 @@ foreach ($endpoints as $relative => $expect) {
     }
 }
 
+$discovery = (string) @file_get_contents($root . '/api/get-google-resources.php');
+if (strpos($discovery, 'api_require_editor(') === false) {
+    $failures[] = 'api/get-google-resources.php does not call api_require_editor()';
+}
+
 $disconnect = (string) @file_get_contents($root . '/api/disconnect-google.php');
 if (strpos($disconnect, "'owner'") === false || strpos($disconnect, "'superadmin'") === false) {
     $failures[] = 'api/disconnect-google.php does not check the owner and superadmin roles';

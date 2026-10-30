@@ -14,6 +14,7 @@ use GTMAuditor\GoogleResourceDiscovery;
 use GTMAuditor\SourceStatus;
 
 $user = require_auth();
+api_require_editor($user);
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
     api_respond(['error' => 'method_not_allowed'], 405);
 }
