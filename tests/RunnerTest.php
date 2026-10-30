@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+
 // Verifies tests/run.php against known-good and known-bad fixtures.
 // Run with: php tests/RunnerTest.php
 

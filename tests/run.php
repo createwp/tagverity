@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+
 // Single-command runner for the standalone tests in tests/.
 //
 // Usage: php tests/run.php [dir]

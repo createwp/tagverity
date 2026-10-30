@@ -1,20 +1,20 @@
 Options -Indexes
 
-# Block direct access to sensitive directories
+# Deny by default: only root pages, api/ and assets/ are publicly reachable.
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # Block access to includes/
-    RewriteRule ^includes/ - [F,L]
+    # Block any path segment starting with a dot (.git/, .env, .remember/, .claude/, ...)
+    RewriteRule (^|/)\. - [F,L]
 
-    # Block access to src/
-    RewriteRule ^src/ - [F,L]
+    # Block internal directories
+    RewriteRule ^(vendor|tests|docs|logs|storage|sql|src|includes|cron|node_modules)(/|$) - [F,L]
 
-    # Block access to cron/
-    RewriteRule ^cron/ - [F,L]
+    # Block Markdown documents
+    RewriteRule \.md$ - [F,L]
 
-    # Block access to sql/
-    RewriteRule ^sql/ - [F,L]
+    # Block Composer manifests
+    RewriteRule ^composer\.(json|lock)$ - [F,L]
 </IfModule>
 
 # Protect .env files
