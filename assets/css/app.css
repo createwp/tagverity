@@ -1904,3 +1904,46 @@ body.scroll-locked { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .tracking-trigger-toggle .app-icon { transition: none; }
 }
+/* ─── Event panel stays within narrow screens (C9 Task 5 fix round 1) ─── */
+.tracking-event-list { grid-template-columns: minmax(0, 1fr); }
+.tracking-event-list > *,
+.tracking-event-card,
+.tracking-event-card-header,
+.tracking-event-identity,
+.tracking-event-card-body,
+.tracking-event-config,
+.tracking-event-config > *,
+.tracking-destination-fieldset,
+.tracking-destination-host,
+.tracking-destination-panel,
+.tracking-destination-sends,
+.tracking-destination-identifiers,
+.tracking-destination-controls > *,
+.tracking-parameter-fieldset,
+.tracking-trigger-summary,
+.tracking-trigger-summary-main,
+.tracking-trigger-details { min-width: 0; max-width: 100%; }
+.tracking-event-card code,
+.tracking-event-card .form-input,
+.tracking-event-card .form-select,
+.tracking-event-card .form-help,
+.tracking-trigger-detail code,
+.tracking-trigger-detail strong,
+.tracking-trigger-runs,
+.destination-sends-target { overflow-wrap: anywhere; }
+.destination-pill { max-width: 100%; }
+.destination-pill-label { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .tracking-event-card-body { grid-template-columns: minmax(0, 1fr); padding: var(--space-4); }
+  .tracking-trigger-summary { flex-direction: column; align-items: stretch; }
+  .tracking-trigger-summary-main { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  .tracking-trigger-summary-actions { justify-content: space-between; flex-wrap: wrap; }
+  .tracking-trigger-detail { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .tracking-destination-controls { grid-template-columns: minmax(0, 1fr); }
+  .tracking-destination-sends-list { min-width: 0; }
+  .tracking-destination-sends-list .chip { max-width: 100%; }
+  .tracking-destination-identifiers .tracking-destination-parameter { max-width: 100%; }
+  .tracking-destination-identifiers .tracking-destination-parameter span { min-width: 0; flex-wrap: wrap; }
+  .tracking-destination-preview-actions { flex-direction: column; align-items: stretch; }
+  .tracking-destination-preview-actions .btn { width: 100%; }
+}
