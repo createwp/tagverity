@@ -49,11 +49,11 @@ $included_text = implode(', ', array_slice($included, 0, -1)) . ' and ' . end($i
     <div class="page-body">
 
       <div class="card">
-        <div class="empty-state" style="padding:var(--space-8)">
+        <div class="coming-soon">
           <div class="empty-state-icon"><?= app_icon('database') ?></div>
-          <p>BigQuery checks will use your GA4 BigQuery export to look at every event, not just reporting summaries, so we can find gaps that sampled reports hide.</p>
-          <p class="text-muted">Included in the <?= $e($included_text) ?> plans.</p>
-          <p><span class="badge badge-neutral">Not available yet — we're building it. Your audits already cover GTM and GA4.</span></p>
+          <p class="coming-soon-body">BigQuery checks will use your GA4 BigQuery export to look at every event, not just reporting summaries, so we can find gaps that sampled reports hide.</p>
+          <p class="coming-soon-plans">Included in the <?= $e($included_text) ?> plans.</p>
+          <p class="alert alert-info coming-soon-status"><span class="alert-icon"><?= app_icon('info') ?></span><span>Not available yet — we're building it. Your audits already cover GTM and GA4.</span></p>
           <a href="dashboard.php" class="btn btn-secondary">Back to dashboard</a>
         </div>
       </div>

@@ -64,7 +64,7 @@ final class AuditReportPdf
             $body .= '<div class="notice">These findings come from the data we could check. Sources marked &quot;Not checked&quot; above may hide other issues.</div>';
         }
 
-        $body .= $this->coverageBlock($coverageRows);
+        $body .= $this->coverageBlock($coverageRows, $this->coverageFootnote($job));
         $body .= $this->findingsBlock($status, $findings, $grouped, $includeDeveloperNotes);
 
         $generated = $this->e(date('d M Y'));
@@ -138,7 +138,7 @@ final class AuditReportPdf
             . '</tr></table>';
     }
 
-    private function coverageBlock(array $coverageRows): string
+    private function coverageBlock(array $coverageRows, string $footnote = ''): string
     {
         $html = '<div class="section">'
             . '<h2>Data coverage</h2>'
@@ -157,7 +157,45 @@ final class AuditReportPdf
                 . '</tr>';
         }
 
-        return $html . '</table></div>';
+        return $html . '</table>' . $footnote . '</div>';
+    }
+
+    /**
+     * The same small print the web report shows under Data coverage. Returns '' when
+     * the job has no recorded rule set or GA4 window (for example, jobs from before
+     * coverage tracking).
+     */
+    private function coverageFootnote(array $job): string
+    {
+        $status = $this->sourceStatus($job);
+        if ($status === null) {
+            return '';
+        }
+
+        $parts = [];
+        if (!empty($status['rule_set_version'])) {
+            $parts[] = 'Rule set ' . (string) $status['rule_set_version'];
+        }
+        if (isset($status['ga4_window_days'])) {
+            $parts[] = 'GA4 window ' . (int) $status['ga4_window_days'] . ' days';
+        }
+        if ($parts === []) {
+            return '';
+        }
+
+        return '<div class="coverage-note">' . $this->e(implode(' · ', $parts)) . '</div>';
+    }
+
+    /** Decodes audit_jobs.source_status, which may arrive as a JSON string or an array. */
+    private function sourceStatus(array $job): ?array
+    {
+        $raw = $job['source_status'] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        $decoded = is_array($raw) ? $raw : json_decode((string) $raw, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     private function findingsBlock(string $status, array $findings, array $grouped, bool $includeDeveloperNotes): string
@@ -173,8 +211,13 @@ final class AuditReportPdf
             if (empty($grouped[$severity])) {
                 continue;
             }
-            $html .= '<div class="group-heading">' . $this->e($heading) . ' (' . count($grouped[$severity]) . ')</div>';
-            foreach ($grouped[$severity] as $finding) {
+            // The heading stays with the first finding so it cannot be orphaned at a page foot.
+            $items = $grouped[$severity];
+            $first = array_shift($items);
+            $html .= '<div class="finding-group"><div class="group-heading">' . $this->e($heading) . ' (' . count($grouped[$severity]) . ')</div>'
+                . $this->findingBlock($severity, $first, $includeDeveloperNotes)
+                . '</div>';
+            foreach ($items as $finding) {
                 $html .= $this->findingBlock($severity, $finding, $includeDeveloperNotes);
             }
         }
@@ -299,6 +342,7 @@ td { vertical-align: top; }
 
 .coverage { width: 100%; }
 .coverage td { padding: 7px 6px; border-top: 1px solid #dfe2ea; }
+.coverage-note { font-size: 7.5pt; color: #8b94a8; margin-top: 6px; }
 .cov-status { width: 110px; }
 .cov-source { width: 150px; font-weight: bold; }
 .cov-message { color: #555663; }
@@ -310,7 +354,8 @@ td { vertical-align: top; }
 .pill-success { background: #eaf8f3; color: #168a68; border-color: #a9dfcd; }
 .pill-neutral { background: #edf4fd; color: #555663; border-color: #dfe2ea; }
 
-.group-heading { font-size: 10pt; font-weight: bold; color: #555663; margin: 12px 0 6px 0; }
+.group-heading { font-size: 10pt; font-weight: bold; color: #555663; margin: 12px 0 6px 0; page-break-after: avoid; }
+.finding-group { page-break-inside: avoid; }
 
 .finding { border: 1px solid #dfe2ea; border-left-width: 4px; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; page-break-inside: avoid; }
 .finding-critical { border-left-color: #d93025; }

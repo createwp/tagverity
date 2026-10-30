@@ -1,6 +1,7 @@
 <?php
 // ─── billing.php — Plan picker + Stripe Checkout ─────────────────────────────
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/src/AuditCredits.php';
 $user        = require_auth();
 $active_page = 'billing';
 
@@ -15,7 +16,6 @@ $current_plan = $plan_stmt->fetch();
 $all_plans = $pdo->query("SELECT * FROM plans ORDER BY id ASC")->fetchAll();
 
 // Credits used this month, counted with the same rules as the audit trigger
-require_once __DIR__ . '/src/AuditCredits.php';
 $credits_used  = GTMAuditor\AuditCredits::usedThisMonthForAccount($pdo, (int)$user['account_id']);
 $credits_limit = (int)($current_plan['audit_credits_monthly'] ?? 5);
 ?>

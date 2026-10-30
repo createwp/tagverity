@@ -73,4 +73,28 @@ pdfReportAssert(
 $pdf = $view->render($job, 'Acme', $findings, $coverage, false);
 pdfReportAssert(substr($pdf, 0, 5) === '%PDF-', 'render() output must start with %PDF-');
 
+// 5. Coverage footnote: shown when source_status records the rule set and GA4 window.
+$footnoteJob = $job + ['source_status' => json_encode([
+    'rule_set_version' => '2026.10.1',
+    'ga4_window_days'  => 28,
+])];
+$footnoted = $view->html($footnoteJob, 'Acme', $findings, $coverage, false);
+pdfReportAssert(
+    strpos($footnoted, 'Rule set 2026.10.1 · GA4 window 28 days') !== false,
+    'footnote must show the rule set and GA4 window when source_status has them'
+);
+
+// 6. Coverage footnote: absent when source_status is null.
+$noStatus = $view->html($job + ['source_status' => null], 'Acme', $findings, $coverage, false);
+pdfReportAssert(strpos($noStatus, 'Rule set') === false, 'footnote must be absent when source_status is null');
+pdfReportAssert(strpos($noStatus, 'GA4 window') === false, 'GA4 window must be absent when source_status is null');
+pdfReportAssert(strpos($noStatus, '<div class="coverage-note">') === false, 'coverage-note block must be absent when source_status is null');
+
+// 7. Group headings stay with their first finding and are never left at a page foot.
+pdfReportAssert(strpos($footnoted, 'page-break-after: avoid') !== false, 'group headings must carry page-break-after: avoid');
+pdfReportAssert(
+    preg_match('/<div class="finding-group"><div class="group-heading">Critical \(1\)<\/div><div class="finding finding-critical">/', $footnoted) === 1,
+    'the Critical heading must be wrapped with its first finding'
+);
+
 echo "AuditReportPdfTest: all assertions passed\n";
