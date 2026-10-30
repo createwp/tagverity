@@ -76,5 +76,16 @@ jobs:
           echo "$output"
           echo "$output" | grep -q '"ok":true'
 
+      # Each failing test's output is also emitted as an annotation, which is
+      # readable on the run summary and through the API without signing in.
       - name: Run tests
-        run: composer test
+        run: |
+          set +e
+          php tests/run.php > test-output.txt 2>&1
+          status=$?
+          cat test-output.txt
+          if [ $status -ne 0 ]; then
+            awk '/^FAIL /{if (msg) print msg; msg=$0; next} /^(PASS|SKIP) |^[0-9]+ passed/{if (msg) print msg; msg=""; next} {if (msg) msg=msg "%0A" $0} END{if (msg) print msg}' test-output.txt \
+              | while IFS= read -r block; do echo "::error title=Test failure::${block:0:3000}"; done
+          fi
+          exit $status
