@@ -1727,3 +1727,22 @@ body.connections-picker-open { overflow: hidden; }
   .connections-client-switch { width: 100%; }
   .connections-client-switch .form-select, .connections-client-switch .btn { flex: 1 1 100%; width: 100%; }
 }
+
+/* ─── Audit history page ────────────────────────────────────────────────────── */
+.audits-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border); }
+.audits-filter { display: flex; flex-direction: column; gap: var(--space-1); flex: 1 1 180px; min-width: 0; }
+.audits-filter label { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.audits-filter .form-select,
+.audits-apply { min-height: 44px; }
+.audits-apply { flex: 0 0 auto; }
+.audits-pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border); }
+.audits-pagination .btn { min-height: 44px; }
+.audits-pagination [aria-disabled="true"] { opacity: 0.5; pointer-events: none; }
+.audits-page-count { font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+@media (max-width: 640px) {
+  .audits-filter { flex-basis: 100%; }
+  .audits-apply { width: 100%; }
+  .audits-pagination { flex-wrap: wrap; }
+  .audits-pagination .btn { flex: 1 1 auto; justify-content: center; }
+  .audits-page-count { flex-basis: 100%; order: -1; }
+}
