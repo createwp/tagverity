@@ -38,7 +38,7 @@ final class EventDestinationRouter {
         return 'intent';
     }
 
-    public function routeOptions(array $savedRoutes, array $defaultTemplates, string $canonicalName, string $eventGroup, array $availableParameters = [], array $selectedParameters = [], array $privacy = []): array {
+    public function routeOptions(array $savedRoutes, array $defaultTemplates, string $canonicalName, string $eventGroup, array $availableParameters = [], array $selectedParameters = [], array $privacy = [], array $manualParameters = []): array {
         $configured = count($savedRoutes) > 0;
         $defaults = [];
         foreach ($defaultTemplates as $template) {
@@ -66,7 +66,7 @@ final class EventDestinationRouter {
                 'recommendations_by_group' => $this->recommendationsByGroup($platform, $canonicalName),
                 'format_help' => $this->formatHelp($platform),
                 'max_length' => $platform === 'ga4' ? 40 : ($platform === 'google_ads' ? 100 : 80),
-                'parameters' => $this->parameterOptions($platform, $availableParameters, $selectedParameters, $savedMappings, array_key_exists('parameter_mappings', $routeSettings)),
+                'parameters' => $this->parameterOptions($platform, $availableParameters, $selectedParameters, $savedMappings, array_key_exists('parameter_mappings', $routeSettings), $manualParameters),
                 'user_identifiers' => $this->identifierOptions($platform, $privacy, $routeSettings),
                 'identifier_notice' => $this->identifierNotice($platform, $privacy),
             ];
@@ -74,7 +74,7 @@ final class EventDestinationRouter {
         return $options;
     }
 
-    public function normaliseInput(array $input, string $canonicalName, string $eventGroup, array $allowedParameters = [], array $allowedIdentifiers = []): array {
+    public function normaliseInput(array $input, string $canonicalName, string $eventGroup, array $allowedParameters = [], array $allowedIdentifiers = [], array $manualParameterNames = []): array {
         if (!$this->validGroup($eventGroup) || count($input) > count(self::PLATFORMS)) {
             throw new \InvalidArgumentException('invalid_destination_configuration');
         }
@@ -89,8 +89,10 @@ final class EventDestinationRouter {
             $requestedParameters = is_array($route['parameters'] ?? null) ? $route['parameters'] : [];
             $parameterMappings = [];
             foreach ($requestedParameters as $parameter) {
-                if (!is_string($parameter) || !in_array($parameter, $allowedParameters, true)) throw new \InvalidArgumentException('invalid_destination_parameter');
-                $destinationName = $this->destinationParameterName($platform, $parameter);
+                if (!is_string($parameter) || !in_array($parameter, array_merge($allowedParameters, $manualParameterNames), true)) throw new \InvalidArgumentException('invalid_destination_parameter');
+                $destinationName = in_array($parameter, $manualParameterNames, true)
+                    ? $this->manualDestinationName($platform, $parameter)
+                    : $this->destinationParameterName($platform, $parameter);
                 if ($destinationName === null) throw new \InvalidArgumentException('unsupported_destination_parameter');
                 $parameterMappings[] = ['canonical_name' => $parameter, 'destination_name' => $destinationName];
             }
@@ -214,7 +216,7 @@ final class EventDestinationRouter {
         return 'A unique, human-readable Google Ads conversion action name; maximum 100 characters.';
     }
 
-    private function parameterOptions(string $platform, array $available, array $selected, array $savedMappings, bool $configured): array {
+    private function parameterOptions(string $platform, array $available, array $selected, array $savedMappings, bool $configured, array $manualParameters = []): array {
         $saved = [];
         foreach ($savedMappings as $mapping) {
             if (is_array($mapping) && isset($mapping['canonical_name'])) $saved[(string)$mapping['canonical_name']] = true;
@@ -227,9 +229,29 @@ final class EventDestinationRouter {
                 'canonical_name' => $parameter,
                 'destination_name' => $destinationName,
                 'selected' => $configured ? isset($saved[$parameter]) : in_array($parameter, $selected, true),
+                'manual' => false,
+                'supported' => true,
+            ];
+        }
+        foreach ($manualParameters as $manual) {
+            $name = is_array($manual) ? (string)($manual['name'] ?? '') : '';
+            if ($name === '') continue;
+            $options[] = [
+                'canonical_name' => $name,
+                'destination_name' => $this->manualDestinationName($platform, $name),
+                'selected' => $configured && isset($saved[$name]),
+                'manual' => true,
+                'supported' => $platform !== 'google_ads',
             ];
         }
         return $options;
+    }
+
+    /** Custom literal parameters: GA4 and PostHog keep the name, Meta nests it in custom_data, Google Ads cannot take it. */
+    private function manualDestinationName(string $platform, string $name): ?string {
+        if ($platform === 'google_ads') return null;
+        if ($platform === 'meta') return 'custom_data.' . $name;
+        return $name;
     }
 
     private function destinationParameterName(string $platform, string $parameter): ?string {

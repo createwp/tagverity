@@ -36,6 +36,7 @@ if (empty($_SESSION['csrf_token'])) {
       </div>
       <?php if ($client): ?>
       <div class="page-header-actions">
+        <button class="btn btn-secondary" type="button" id="privacy-drawer-open" aria-controls="privacy-drawer" aria-expanded="false" aria-label="Privacy controls"><?= app_icon('lock') ?><span class="privacy-drawer-open-label">Privacy</span></button>
         <a class="btn btn-secondary" href="destination-connections.php?client_id=<?= (int)$client['id'] ?>">Destinations</a>
         <a class="btn btn-secondary" href="element-mapper.php?client_id=<?= (int)$client['id'] ?>&amp;return=workspace">Map an element</a>
         <a class="btn btn-primary" href="publish-tags.php?client_id=<?= (int)$client['id'] ?>">Review changes</a>
@@ -52,85 +53,90 @@ if (empty($_SESSION['csrf_token'])) {
 
           <template id="tracking-icon-plus"><?= app_icon('plus') ?></template>
           <template id="tracking-icon-minus"><?= app_icon('minus') ?></template>
+          <template id="tracking-icon-x"><?= app_icon('x') ?></template>
           <template id="tracking-icon-pencil"><?= app_icon('pencil') ?></template>
           <template id="tracking-icon-chevron"><?= app_icon('chevron-right') ?></template>
 
-          <div class="tracking-workspace-layout">
-            <section class="tracking-event-section">
-              <div class="tracking-browser-toolbar" aria-label="Find and filter tags">
-                <label class="tracking-search-field" for="tracking-event-search">
-                  <?= app_icon('search') ?>
-                  <span class="sr-only">Search tags and triggers</span>
-                  <input id="tracking-event-search" type="search" placeholder="Search tags or triggers" autocomplete="off">
-                </label>
-                <label class="tracking-browser-select" for="tracking-tag-type-filter">
-                  <span>Destination</span>
-                  <select id="tracking-tag-type-filter"><option value="all">All destinations</option></select>
-                </label>
-                <label class="tracking-browser-select" for="tracking-trigger-type-filter">
-                  <span>Trigger type</span>
-                  <select id="tracking-trigger-type-filter"><option value="all">All trigger types</option></select>
-                </label>
+          <section class="tracking-event-section">
+            <div class="tracking-browser-toolbar" aria-label="Find and filter tags">
+              <label class="tracking-search-field" for="tracking-event-search">
+                <?= app_icon('search') ?>
+                <span class="sr-only">Search tags and triggers</span>
+                <input id="tracking-event-search" type="search" placeholder="Search tags or triggers" autocomplete="off">
+              </label>
+              <label class="tracking-browser-select" for="tracking-tag-type-filter">
+                <span>Destination</span>
+                <select id="tracking-tag-type-filter"><option value="all">All destinations</option></select>
+              </label>
+              <label class="tracking-browser-select" for="tracking-trigger-type-filter">
+                <span>Trigger type</span>
+                <select id="tracking-trigger-type-filter"><option value="all">All trigger types</option></select>
+              </label>
+            </div>
+            <div class="tracking-controls-row">
+              <div class="tracking-filters" role="group" aria-label="Filter events">
+                <button class="tracking-filter active" type="button" data-filter="all">All</button>
+                <button class="tracking-filter" type="button" data-filter="recommended">Recommended</button>
+                <button class="tracking-filter" type="button" data-filter="mapped">Mapped</button>
+                <button class="tracking-filter" type="button" data-filter="enabled">Included</button>
+                <button class="tracking-filter" type="button" data-filter="configured">Edited</button>
+                <button class="tracking-filter" type="button" data-filter="disabled">Excluded</button>
               </div>
-              <div class="tracking-controls-row">
-                <div class="tracking-filters" role="group" aria-label="Filter events">
-                  <button class="tracking-filter active" type="button" data-filter="all">All</button>
-                  <button class="tracking-filter" type="button" data-filter="recommended">Recommended</button>
-                  <button class="tracking-filter" type="button" data-filter="mapped">Mapped</button>
-                  <button class="tracking-filter" type="button" data-filter="enabled">Included</button>
-                  <button class="tracking-filter" type="button" data-filter="configured">Edited</button>
-                  <button class="tracking-filter" type="button" data-filter="disabled">Excluded</button>
-                </div>
-                <section class="tracking-workspace-summary" id="tracking-workspace-summary" aria-label="Workspace summary" aria-live="polite"></section>
+              <section class="tracking-workspace-summary" id="tracking-workspace-summary" aria-label="Workspace summary" aria-live="polite"></section>
+            </div>
+            <div class="tracking-event-list" id="tracking-event-list" aria-live="polite"></div>
+            <nav class="tracking-pagination" id="tracking-pagination" aria-label="Tag list pagination">
+              <label class="tracking-page-size" for="tracking-page-size">Show
+                <select id="tracking-page-size">
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+                per page
+              </label>
+              <span class="tracking-page-range" id="tracking-page-range" aria-live="polite"></span>
+              <div class="tracking-page-actions">
+                <button class="tracking-page-button" id="tracking-page-previous" type="button" aria-label="Previous page" title="Previous page"><?= app_icon('arrow-left') ?></button>
+                <span id="tracking-page-number"></span>
+                <button class="tracking-page-button" id="tracking-page-next" type="button" aria-label="Next page" title="Next page"><?= app_icon('arrow-right') ?></button>
               </div>
-              <div class="tracking-event-list" id="tracking-event-list" aria-live="polite"></div>
-              <nav class="tracking-pagination" id="tracking-pagination" aria-label="Tag list pagination">
-                <label class="tracking-page-size" for="tracking-page-size">Show
-                  <select id="tracking-page-size">
-                    <option value="10" selected>10</option>
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                  </select>
-                  per page
-                </label>
-                <span class="tracking-page-range" id="tracking-page-range" aria-live="polite"></span>
-                <div class="tracking-page-actions">
-                  <button class="tracking-page-button" id="tracking-page-previous" type="button" aria-label="Previous page" title="Previous page"><?= app_icon('arrow-left') ?></button>
-                  <span id="tracking-page-number"></span>
-                  <button class="tracking-page-button" id="tracking-page-next" type="button" aria-label="Next page" title="Next page"><?= app_icon('arrow-right') ?></button>
-                </div>
-              </nav>
-            </section>
+            </nav>
+          </section>
 
-            <aside class="tracking-privacy-column">
-              <section class="card tracking-privacy-card">
+          <div class="reveal-drawer-backdrop" hidden></div>
+          <aside id="privacy-drawer" class="reveal-drawer" role="dialog" aria-modal="true" aria-labelledby="privacy-drawer-title" hidden>
+            <header class="reveal-drawer-header">
+              <div>
                 <span class="onboarding-eyebrow">Privacy control</span>
-                <h2>Personal identifiers</h2>
-                <div class="tracking-privacy-lock"><strong>Raw form values are never captured</strong><p>Names, email addresses, phone numbers, messages, and other typed values are blocked from event parameters, storage, and logs. Allowed identifiers are trimmed, standardised and validated immediately before one-way hashing.</p></div>
-                <form id="tracking-privacy-form">
-                  <label class="tracking-privacy-option">
-                    <input type="radio" name="pii_policy" value="off" checked>
-                    <span><strong>Do not use identifiers</strong><small>Includes hashed identifiers. Recommended default.</small></span>
-                  </label>
-                  <label class="tracking-privacy-option">
-                    <input type="radio" name="pii_policy" value="hashed">
-                    <span><strong>Allow selected identifiers as SHA-256 hashes</strong><small>Only after the required consent and destination rules pass.</small></span>
-                  </label>
-                  <div class="tracking-hashed-fields" id="tracking-hashed-fields" hidden>
-                    <p>Allow only:</p>
-                    <label><input type="checkbox" value="email"> Email</label>
-                    <label><input type="checkbox" value="phone"> Phone</label>
-                    <label><input type="checkbox" value="full_name"> Full name</label>
-                    <label><input type="checkbox" value="first_name"> First name</label>
-                    <label><input type="checkbox" value="last_name"> Last name</label>
-                  </div>
-                  <button class="btn btn-secondary tracking-hash-learn" id="tracking-hash-demo-open" type="button" hidden><?= app_icon('info') ?> See how SHA-256 works</button>
-                  <button class="btn btn-primary tracking-privacy-save" id="tracking-privacy-save" type="submit">Save privacy policy</button>
-                </form>
-                <p class="tracking-policy-note">This setting defines the tracking policy. Server-side hashing and destination delivery are not activated until those integrations are configured and verified.</p>
-              </section>
-            </aside>
-          </div>
+                <h2 id="privacy-drawer-title">Personal identifiers</h2>
+              </div>
+              <button class="btn btn-ghost reveal-drawer-close" id="privacy-drawer-close" type="button" aria-label="Close privacy controls"><?= app_icon('x') ?></button>
+            </header>
+            <div class="reveal-drawer-body">
+              <div class="tracking-privacy-lock"><strong>Raw form values are never captured</strong><p>Names, email addresses, phone numbers, messages, and other typed values are blocked from event parameters, storage, and logs. Allowed identifiers are trimmed, standardised and validated immediately before one-way hashing.</p></div>
+              <form id="tracking-privacy-form">
+                <label class="tracking-privacy-option">
+                  <input type="radio" name="pii_policy" value="off" checked>
+                  <span><strong>Do not use identifiers</strong><small>Includes hashed identifiers. Recommended default.</small></span>
+                </label>
+                <label class="tracking-privacy-option">
+                  <input type="radio" name="pii_policy" value="hashed">
+                  <span><strong>Allow selected identifiers as SHA-256 hashes</strong><small>Only after the required consent and destination rules pass.</small></span>
+                </label>
+                <div class="tracking-hashed-fields" id="tracking-hashed-fields" hidden>
+                  <p>Allow only:</p>
+                  <label><input type="checkbox" value="email"> Email</label>
+                  <label><input type="checkbox" value="phone"> Phone</label>
+                  <label><input type="checkbox" value="full_name"> Full name</label>
+                  <label><input type="checkbox" value="first_name"> First name</label>
+                  <label><input type="checkbox" value="last_name"> Last name</label>
+                </div>
+                <button class="btn btn-secondary tracking-hash-learn" id="tracking-hash-demo-open" type="button" hidden><?= app_icon('info') ?> See how SHA-256 works</button>
+                <button class="btn btn-primary tracking-privacy-save" id="tracking-privacy-save" type="submit">Save privacy policy</button>
+              </form>
+              <p class="tracking-policy-note">This setting defines the tracking policy. Server-side hashing and destination delivery are not activated until those integrations are configured and verified.</p>
+            </div>
+          </aside>
 
           <div class="tracking-hash-modal" id="tracking-hash-modal" hidden>
             <section class="tracking-hash-dialog" role="dialog" aria-modal="true" aria-labelledby="tracking-hash-title">

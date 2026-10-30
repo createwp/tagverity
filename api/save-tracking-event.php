@@ -6,8 +6,10 @@ require_once __DIR__ . '/../includes/api.php';
 require_once __DIR__ . '/../src/ReleaseEventBuilder.php';
 require_once __DIR__ . '/../src/EventDestinationRouter.php';
 require_once __DIR__ . '/../src/TrackingWorkspace.php';
+require_once __DIR__ . '/../src/ManualParameters.php';
 
 use GTMAuditor\EventDestinationRouter;
+use GTMAuditor\ManualParameters;
 use GTMAuditor\ReleaseEventBuilder;
 use GTMAuditor\TrackingWorkspace;
 
@@ -25,6 +27,12 @@ $selectedParameters = is_array($input['selected_parameters'] ?? null) ? $input['
 $triggerIntent = trim((string)($input['trigger_intent'] ?? ''));
 $eventGroup = trim((string)($input['event_group'] ?? ''));
 $destinationInput = is_array($input['destinations'] ?? null) ? $input['destinations'] : [];
+// Missing key keeps the saved custom parameters; an empty list clears them.
+$manualProvided = isset($input['manual_parameters']);
+if ($manualProvided && !is_array($input['manual_parameters'])) {
+    api_respond(['error' => 'invalid_manual_parameters', 'message' => 'Custom parameters could not be read. Refresh the page and try again.'], 422);
+}
+$manualInput = $manualProvided ? $input['manual_parameters'] : [];
 assert_client_access($clientId);
 
 $nameValidator = new ReleaseEventBuilder();
@@ -64,12 +72,20 @@ try {
     if (count($cleanParameters) !== count(array_unique(array_filter($selectedParameters, 'is_string')))) {
         api_respond(['error' => 'invalid_parameter', 'message' => 'One or more selected parameters are not available for this event.'], 422);
     }
+    $savedManualParameters = [];
+    if (!$manualProvided) {
+        $savedManualStmt = db()->prepare('SELECT manual_parameters FROM tracking_event_settings WHERE client_id = ? AND event_key = ? LIMIT 1');
+        $savedManualStmt->execute([$clientId, $eventKey]);
+        $savedManualParameters = ManualParameters::decode($savedManualStmt->fetchColumn() ?: null);
+    }
     try {
+        $manualParameters = ManualParameters::clean($manualProvided ? $manualInput : $savedManualParameters, $availableParameters);
+        $manualNames = array_column($manualParameters, 'name');
         $privacy = $workspace['privacy'] ?? [];
         $allowedIdentifiers = !empty($privacy['hashed_pii_enabled']) && is_array($privacy['allowed_hashed_fields'] ?? null)
             ? $privacy['allowed_hashed_fields']
             : [];
-        $destinationRoutes = $destinationRouter->normaliseInput($destinationInput, $approvedName, $eventGroup, $cleanParameters, $allowedIdentifiers);
+        $destinationRoutes = $destinationRouter->normaliseInput($destinationInput, $approvedName, $eventGroup, $cleanParameters, $allowedIdentifiers, $manualNames);
     } catch (InvalidArgumentException $e) {
         $messages = [
             'invalid_ga4_event_name' => 'GA4 names must start with a letter and contain no more than 40 lowercase letters, numbers, or underscores.',
@@ -80,6 +96,10 @@ try {
             'unsupported_destination_parameter' => 'A selected parameter is not supported by that destination.',
             'identifier_not_allowed_by_privacy_policy' => 'A selected identifier is not allowed by the saved privacy policy.',
             'unsupported_destination_identifier' => 'That destination does not support one of the selected user identifiers.',
+            'manual_parameter_name' => "Custom parameter names must start with a letter, use lowercase letters, numbers and underscores, and can't be personal information like email or phone.",
+            'manual_parameter_conflict' => 'That parameter already exists for this event.',
+            'manual_parameter_value' => 'Custom values must be 1–100 characters of plain text.',
+            'manual_parameter_limit' => 'An event can have up to 10 custom parameters.',
         ];
         api_respond(['error' => $e->getMessage(), 'message' => $messages[$e->getMessage()] ?? 'Check the selected destinations and their event names.'], 422);
     }
@@ -88,12 +108,13 @@ try {
     $pdo->beginTransaction();
     $stmt = $pdo->prepare(
         'INSERT INTO tracking_event_settings
-         (client_id, event_key, source_event_name, approved_event_name, event_group, enabled, selected_parameters, trigger_intent, updated_by_user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (client_id, event_key, source_event_name, approved_event_name, event_group, enabled, selected_parameters, manual_parameters, trigger_intent, updated_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE source_event_name = VALUES(source_event_name),
              approved_event_name = VALUES(approved_event_name), enabled = VALUES(enabled),
              event_group = VALUES(event_group),
-             selected_parameters = VALUES(selected_parameters), trigger_intent = VALUES(trigger_intent),
+             selected_parameters = VALUES(selected_parameters), manual_parameters = VALUES(manual_parameters),
+             trigger_intent = VALUES(trigger_intent),
              updated_by_user_id = VALUES(updated_by_user_id),
              updated_at = NOW()'
     );
@@ -105,6 +126,7 @@ try {
         $eventGroup,
         $enabled ? 1 : 0,
         json_encode($cleanParameters, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        ManualParameters::encode($manualParameters),
         $triggerIntent !== '' ? $triggerIntent : null,
         (int)$user['id'],
     ]);
@@ -139,6 +161,7 @@ try {
         'approved_event_name' => $approvedName,
         'enabled' => $enabled,
         'selected_parameters' => $cleanParameters,
+        'manual_parameters' => $manualParameters,
         'trigger_intent' => $triggerIntent !== '' ? $triggerIntent : null,
         'event_group' => $eventGroup,
         'destinations' => $destinationRoutes,

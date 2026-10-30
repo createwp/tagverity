@@ -341,8 +341,8 @@ Audit request
   release review through a four-step happy path
 - Each event can be included or excluded, renamed, and limited to an explicit
   subset of its available parameters before release review
-- Tag rows are compact accordions with one editor open at a time; include or
-  exclude remains available directly from the collapsed summary
+- Each event is a full-width card with include or exclude on its summary row;
+  the list uses the whole content width because privacy controls live in a drawer
 - Single click and visibility mappings keep the user's mapper name as the
   analytics-safe custom event name while inheriting a reviewed system parameter
   template; explicitly saved names are never replaced by a later recommendation
@@ -357,6 +357,30 @@ Audit request
   name are separately opt-in and default off
 - A browser-only SHA-256 demonstration explains normalisation and hashing without
   transmitting or saving the example value
+- Destinations are pills (up to four, then a "+N more" popover with search).
+  Choosing a pill opens its configuration in one reveal panel below the pills;
+  only one destination configuration is open at a time, and every route is
+  saved from one per-card state object. Each destination's Sends list offers
+  only the parameters captured on that event
+- Captured parameters are removable chips. "+ Add parameter" offers auto-captured
+  parameters and custom literal parameters. A custom parameter needs a lowercase
+  name matching `^[a-z][a-z0-9_]{0,39}$` and a literal value of at most 100
+  characters with no control characters; an event holds at most 10. Names that
+  duplicate an available parameter or look like identifiers (email, phone, names,
+  address, postcode, zip, dob, user_id, ip, or containing email, phone or
+  password) are rejected
+- Custom parameters route by platform: GA4 and PostHog receive the same name,
+  Meta receives it inside `custom_data`, and Google Ads never receives it
+- The trigger has an always-visible summary with an Edit trigger action; a
+  chevron expands its condition and exception counts
+- Privacy control opens from a lock button in the page header as a slide-over
+  drawer. Saving keeps the drawer open, and the SHA-256 example stacks above it
+  and returns focus to the drawer when closed
+- Destination connections are a card grid; each card opens its setup in a modal
+  dialog that traps focus and returns focus to the card on close
+- Reveal patterns are shared across the app (`window.TagVerityUI` in
+  `assets/js/app.js`): modal for configuring a picked item, popover for overflow
+  or add, drawer for page settings, and a single inline reveal for one of a few
 - Mapper deep links open an existing mapping and provide a clear return to the
   central workspace; saved choices preselect release review
 - Mapped tags can be removed through a confirmed soft-archive action; prior
@@ -572,6 +596,7 @@ When implementation work changes the project:
 | 2026-10-27 | Discovered during implementation that comparing only a scan's root hostname (not the full set of hosts/origins a scan actually touched) breaks both the new live flow and the existing static mapper for any site whose root redirects to a different host (e.g. apex to www) — fixed by scoping an allowlist to the root host plus only its apex/www sibling, deliberately excluding any other host a scan's redirects may have passed through. |
 | 2026-10-30 | Connecting Google no longer imports resources automatically; users choose which GA4 properties and GTM containers to link to each client, and an account may connect several Google logins. |
 | 2026-10-30 | Audit credits are counted per account per month across all clients. |
+| 2026-10-30 | Adopted one reveal pattern app-wide: modal for configuring a picked item, popover for overflow/add, drawer for page settings, single inline reveal for one of a few. |
 
 ## Change Log
 
@@ -831,3 +856,22 @@ When implementation work changes the project:
   no forms or fake controls; the features themselves remain in Later Phases.
 - Added `tests/ComingSoonPagesTest.php`, which checks both pages and asserts that
   every page linked from `includes/sidebar.php` exists on disk.
+### 2026-10-30 (Phase 2 — C9)
+
+- Adopted one reveal pattern across the app and added shared dialog, drawer and
+  popover helpers (`window.TagVerityUI` in `assets/js/app.js`). The Connections
+  resource picker uses the shared modal.
+- Destination connections are a card grid; each card opens its setup in a modal
+  dialog instead of an accordion, so only one setup is open at a time.
+- Tags & triggers event cards use pills for destinations with one configuration
+  panel, removable chips for captured parameters, and a trigger summary with an
+  Edit trigger action.
+- Added custom literal parameters (`manual_parameters` on `tracking_event_settings`,
+  at most ten per event, validated in `src/ManualParameters.php`) with the
+  per-platform routing rules described above.
+- Moved Privacy control out of the permanent sidebar into an on-demand drawer
+  opened from a lock button in the page header, so the event list uses the full
+  content width. Every privacy control, saved value, the SHA-256 example and the
+  save toast are unchanged.
+- Covered the drawer, reveal helpers and manual-parameter flow with
+  `tests/TrackingWorkspacePageTest.php` and `tests/RevealHelpersStaticTest.php`.

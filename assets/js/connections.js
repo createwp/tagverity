@@ -25,7 +25,6 @@
   var picker = {
     connectionId: 0,
     email: '',
-    opener: null,
     data: null,
     requestSeq: 0,
     submitting: false,
@@ -212,40 +211,14 @@
   var pickerTitleLogin = document.getElementById('resource-picker-login');
 
   if (dialog) {
-    document.getElementById('resource-picker-close').addEventListener('click', function () { dialog.close(); });
-    document.getElementById('resource-picker-cancel').addEventListener('click', function () { dialog.close(); });
+    document.getElementById('resource-picker-close').addEventListener('click', function () { TagVerityUI.closeDialog(dialog); });
+    document.getElementById('resource-picker-cancel').addEventListener('click', function () { TagVerityUI.closeDialog(dialog); });
     pickerSearch.addEventListener('input', applySearch);
     pickerLink.addEventListener('click', submitLink);
 
-    // Backdrop click: the dialog element itself is the target when the backdrop is clicked.
-    dialog.addEventListener('click', function (event) {
-      if (event.target === dialog) dialog.close();
-    });
-
-    // Keep Tab inside the dialog (focus trap).
-    dialog.addEventListener('keydown', function (event) {
-      if (event.key !== 'Tab') return;
-      var focusable = Array.prototype.slice.call(dialog.querySelectorAll(
-        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-      )).filter(function (node) { return node.offsetParent !== null; });
-      if (!focusable.length) return;
-      var first = focusable[0];
-      var last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    });
-
+    // Focus return, scroll lock, backdrop close and Tab trapping live in TagVerityUI (app.js).
     dialog.addEventListener('close', function () {
       picker.requestSeq += 1; // ignore any load still in flight
-      document.body.classList.remove('connections-picker-open');
-      var opener = picker.opener;
-      picker.opener = null;
-      if (opener && document.body.contains(opener)) opener.focus();
     });
   }
 
@@ -253,7 +226,6 @@
     if (!dialog || !connectionId) return;
     picker.connectionId = connectionId;
     picker.email = email;
-    picker.opener = opener || null;
     picker.data = null;
     pickerSearch.value = '';
     pickerTitleLogin.textContent = 'Choose what this client should use from ' + (email || 'this Google account') + '.';
@@ -261,11 +233,7 @@
     showLoading('Finding your Google properties…');
     updateFooter();
 
-    if (!dialog.open) {
-      dialog.showModal();
-      document.body.classList.add('connections-picker-open');
-    }
-    pickerSearch.focus();
+    TagVerityUI.openDialog(dialog, opener || null, pickerSearch);
     loadResources();
   }
 
@@ -527,7 +495,7 @@
         return;
       }
       var linked = Number(result.body.ga4_linked || 0) + Number(result.body.gtm_linked || 0);
-      dialog.close();
+      TagVerityUI.closeDialog(dialog);
       reloadWith({linked: linked});
     }).catch(function () {
       picker.submitting = false;

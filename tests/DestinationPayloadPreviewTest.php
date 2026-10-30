@@ -30,4 +30,33 @@ if (($result['destination_payload']['data'][0]['event_name'] ?? '') !== 'Lead') 
     exit(1);
 }
 
+$manualEvent = [
+    'approved_event_name' => 'generate_lead',
+    'event_group' => 'lead',
+    'trigger' => ['type' => 'element_click'],
+    'manual_parameters' => [['name' => 'promo_code', 'value' => 'SPRING24']],
+    'tag_templates' => [[
+        'platform' => 'meta',
+        'destination_event_name' => 'Lead',
+        'parameter_mappings' => [['canonical_name' => 'promo_code', 'destination_name' => 'custom_data.promo_code']],
+        'user_identifier_mappings' => [],
+    ], [
+        'platform' => 'ga4',
+        'destination_event_name' => 'generate_lead',
+        'parameter_mappings' => [['canonical_name' => 'promo_code', 'destination_name' => 'promo_code']],
+        'user_identifier_mappings' => [],
+    ]],
+];
+$metaManual = $previewer->build($manualEvent, 'meta', [], ['status' => 'configured', 'configuration' => ['pixel_id' => '123456789']]);
+if (($metaManual['destination_payload']['data'][0]['custom_data']['promo_code'] ?? '') !== 'SPRING24') {
+    fwrite(STDERR, "Meta manual parameters should be sent inside custom_data under their name.\n");
+    exit(1);
+}
+$ga4Manual = $previewer->build($manualEvent, 'ga4', [], ['status' => 'configured', 'configuration' => ['measurement_id' => 'G-TEST']]);
+if (($ga4Manual['destination_payload']['events'][0]['params']['promo_code'] ?? '') !== 'SPRING24'
+    || ($ga4Manual['canonical_event']['parameters']['promo_code'] ?? '') !== 'SPRING24') {
+    fwrite(STDERR, "GA4 manual parameters should carry their literal value under their name.\n");
+    exit(1);
+}
+
 echo "DestinationPayloadPreview tests passed.\n";
