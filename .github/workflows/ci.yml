@@ -66,8 +66,9 @@ jobs:
           echo "MySQL did not become ready in time" >&2
           exit 1
 
+      # innodb_large_prefix and innodb_file_format were removed in MySQL 8.0, so strip those SET GLOBAL lines first.
       - name: Load database schema
-        run: mysql -h127.0.0.1 -uroot -proot tagverity_test < sql/001_initial_schema.sql
+        run: grep -v '^SET GLOBAL' sql/001_initial_schema.sql | mysql -h127.0.0.1 -uroot -proot tagverity_test
 
       - name: Run migrations
         run: |
