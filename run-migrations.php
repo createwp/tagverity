@@ -378,19 +378,24 @@ try {
             $pdo->exec("ALTER TABLE gtm_containers ADD COLUMN {$column} {$definition}");
         }
     }
-    // Remove duplicate containers (keep lowest id) and their dependants before the unique key.
+    // Remove duplicate containers (keep lowest id, matched via keep_id) and their dependants
+    // before the unique key. Data cleanup runs in a transaction; ALTER stays outside it.
     if (!$indexExists('gtm_containers', 'uq_gtm_containers_client_container')) {
+        $gtmKeep = "(SELECT client_id, container_id, MIN(id) AS keep_id
+                     FROM gtm_containers GROUP BY client_id, container_id HAVING COUNT(*) > 1) k";
+        $pdo->beginTransaction();
         $pdo->exec(
             "DELETE dc FROM domain_containers dc
              JOIN gtm_containers dup ON dup.id = dc.container_id
-             JOIN gtm_containers keep_row ON keep_row.client_id = dup.client_id
-                 AND keep_row.container_id = dup.container_id AND keep_row.id < dup.id"
+             JOIN {$gtmKeep} ON k.client_id = dup.client_id AND k.container_id = dup.container_id
+                 AND dup.id <> k.keep_id"
         );
         $pdo->exec(
             "DELETE dup FROM gtm_containers dup
-             JOIN gtm_containers keep_row ON keep_row.client_id = dup.client_id
-                 AND keep_row.container_id = dup.container_id AND keep_row.id < dup.id"
+             JOIN {$gtmKeep} ON k.client_id = dup.client_id AND k.container_id = dup.container_id
+                 AND dup.id <> k.keep_id"
         );
+        $pdo->commit();
         $pdo->exec(
             "ALTER TABLE gtm_containers
              ADD UNIQUE KEY uq_gtm_containers_client_container (client_id, container_id)"
@@ -410,25 +415,37 @@ try {
             $pdo->exec("ALTER TABLE ga4_properties ADD COLUMN {$column} {$definition}");
         }
     }
-    // Remove duplicate properties (keep lowest id) and their dependants before the unique key.
+    // Remove duplicate properties (keep lowest id, matched via keep_id). BigQuery connections are
+    // re-pointed to the kept property rather than deleted; streams and domain links of duplicates go.
     if (!$indexExists('ga4_properties', 'uq_ga4_properties_client_property')) {
+        $ga4Keep = "(SELECT client_id, property_id, MIN(id) AS keep_id
+                     FROM ga4_properties GROUP BY client_id, property_id HAVING COUNT(*) > 1) k";
+        $pdo->beginTransaction();
+        $pdo->exec(
+            "UPDATE bigquery_connections b
+             JOIN ga4_properties dup ON dup.id = b.ga4_property_id
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id
+             SET b.ga4_property_id = k.keep_id"
+        );
         $pdo->exec(
             "DELETE s FROM ga4_streams s
              JOIN ga4_properties dup ON dup.id = s.ga4_property_id
-             JOIN ga4_properties keep_row ON keep_row.client_id = dup.client_id
-                 AND keep_row.property_id = dup.property_id AND keep_row.id < dup.id"
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id"
         );
         $pdo->exec(
             "DELETE dp FROM domain_ga4_properties dp
              JOIN ga4_properties dup ON dup.id = dp.property_id
-             JOIN ga4_properties keep_row ON keep_row.client_id = dup.client_id
-                 AND keep_row.property_id = dup.property_id AND keep_row.id < dup.id"
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id"
         );
         $pdo->exec(
             "DELETE dup FROM ga4_properties dup
-             JOIN ga4_properties keep_row ON keep_row.client_id = dup.client_id
-                 AND keep_row.property_id = dup.property_id AND keep_row.id < dup.id"
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id"
         );
+        $pdo->commit();
         $pdo->exec(
             "ALTER TABLE ga4_properties
              ADD UNIQUE KEY uq_ga4_properties_client_property (client_id, property_id)"
@@ -437,19 +454,27 @@ try {
 
     // ga4_streams: one row per stream within a property
     if (!$indexExists('ga4_streams', 'uq_ga4_streams_property_stream')) {
+        $streamKeep = "(SELECT ga4_property_id, stream_id, MIN(id) AS keep_id
+                        FROM ga4_streams GROUP BY ga4_property_id, stream_id HAVING COUNT(*) > 1) k";
+        $pdo->beginTransaction();
         $pdo->exec(
             "DELETE dup FROM ga4_streams dup
-             JOIN ga4_streams keep_row ON keep_row.ga4_property_id = dup.ga4_property_id
-                 AND keep_row.stream_id = dup.stream_id AND keep_row.id < dup.id"
+             JOIN {$streamKeep} ON k.ga4_property_id = dup.ga4_property_id AND k.stream_id = dup.stream_id
+                 AND dup.id <> k.keep_id"
         );
+        $pdo->commit();
         $pdo->exec(
             "ALTER TABLE ga4_streams
              ADD UNIQUE KEY uq_ga4_streams_property_stream (ga4_property_id, stream_id)"
         );
     }
 
+
     $results[] = ['label' => '013 - real audit data and resource linking', 'ok' => true, 'msg' => 'OK'];
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     error_log('Migration 013 failed: ' . $e->getMessage());
     $results[] = ['label' => '013 - real audit data and resource linking', 'ok' => false, 'msg' => $e->getMessage()];
 }
