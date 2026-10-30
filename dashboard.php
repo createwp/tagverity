@@ -42,11 +42,11 @@ if ($client_id) {
     $s->execute([$client_id]);
     $total_audits = (int)$s->fetchColumn();
 
-    // Latest audit summary. Partial audits are included so the coverage problem is visible.
+    // Latest finished run, whatever its outcome, so a failed run is never hidden behind an older one.
     // The score is NULL unless the audit is complete, so it is never shown as 0.
     $s = $pdo->prepare(
         "SELECT id, status, health_score, completed_at FROM audit_jobs
-         WHERE client_id = ? AND status IN ('complete','partial')
+         WHERE client_id = ? AND status IN ('complete','partial','failed')
          ORDER BY completed_at DESC LIMIT 1"
     );
     $s->execute([$client_id]);
@@ -56,9 +56,9 @@ if ($client_id) {
         $last_score  = $last_job['health_score'] !== null ? (int)$last_job['health_score'] : null;
     }
 
-    // Finding counts from the latest audit. Counts are shown only for complete audits,
-    // because a partial audit's counts reflect only the data that could be checked.
-    if ($last_job && $last_status === 'complete') {
+    // Finding counts from the latest run. A partial run shows its real counts (captioned as
+    // coverage-limited on the page); a failed run checked nothing, so it shows no counts.
+    if ($last_job && $last_status !== 'failed') {
         $s = $pdo->prepare(
             "SELECT severity, COUNT(*) as cnt
              FROM audit_findings
@@ -186,11 +186,17 @@ function scoreColor(int $score): string {
             <span class="health-score-value" style="color:<?= $colour ?>"><?= $last_score ?></span>
           </div>
           <div class="health-score-label">Health Score</div>
-          <?php elseif (in_array($last_status, ['partial'], true)): ?>
+          <?php elseif ($last_status === 'partial'): ?>
           <div class="stat-icon warning" style="margin:0 auto"><?= app_icon('alert') ?></div>
           <div class="stat-value" style="margin-top:var(--space-2);color:var(--text-muted)">—</div>
           <span class="badge badge-warning" style="margin-top:var(--space-1)">Partial</span>
           <div class="stat-label">Score unavailable: some data couldn't be checked</div>
+          <?php elseif ($last_status === 'failed'): ?>
+          <div class="stat-icon critical" style="margin:0 auto"><?= app_icon('alert') ?></div>
+          <div class="stat-value" style="margin-top:var(--space-2);color:var(--text-muted)">—</div>
+          <span class="badge badge-critical" style="margin-top:var(--space-1)">Failed</span>
+          <div class="stat-label">Your latest audit couldn't run.</div>
+          <a href="audit-report.php?id=<?= (int)$last_job['id'] ?>" class="btn btn-ghost btn-sm" style="margin-top:var(--space-2)">See why</a>
           <?php else: ?>
           <div class="stat-icon brand" style="margin:0 auto"><?= app_icon('dashboard') ?></div>
           <div class="stat-value" style="margin-top:var(--space-2)">—</div>
@@ -202,7 +208,7 @@ function scoreColor(int $score): string {
         <div class="stat-card">
           <div class="stat-icon critical"><?= app_icon('alert') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--critical)"><?= $last_status === 'complete' || $last_status === null ? $critical_count : '—' ?></div>
+            <div class="stat-value" style="color:var(--critical)"><?= $last_status === 'failed' ? '—' : $critical_count ?></div>
             <div class="stat-label">Critical findings</div>
           </div>
         </div>
@@ -211,7 +217,7 @@ function scoreColor(int $score): string {
         <div class="stat-card">
           <div class="stat-icon warning"><?= app_icon('alert') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--warning)"><?= $last_status === 'complete' || $last_status === null ? $warning_count : '—' ?></div>
+            <div class="stat-value" style="color:var(--warning)"><?= $last_status === 'failed' ? '—' : $warning_count ?></div>
             <div class="stat-label">Warnings</div>
           </div>
         </div>
@@ -226,6 +232,10 @@ function scoreColor(int $score): string {
             <div class="stat-label">Audits this month</div>
           </div>
         </div>
+
+        <?php if ($last_status === 'partial'): ?>
+        <p class="text-xs text-muted" style="grid-column:1/-1;margin:0">From the sources we could check</p>
+        <?php endif; ?>
 
       </div>
 
@@ -294,7 +304,7 @@ function scoreColor(int $score): string {
                   <?php if ($job['status'] === 'complete' || $job['status'] === 'partial'): ?>
                   <a href="audit-report.php?id=<?= (int)$job['id'] ?>" class="btn btn-sm btn-secondary">View Report</a>
                   <?php elseif ($job['status'] === 'failed'): ?>
-                  <span class="badge badge-critical">Failed</span>
+                  <a href="audit-report.php?id=<?= (int)$job['id'] ?>" class="btn btn-sm btn-secondary">View details</a>
                   <?php endif; ?>
                 </td>
               </tr>

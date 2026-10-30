@@ -188,7 +188,7 @@ $fix_owner_labels = [
         <div class="stat-card">
           <div class="stat-icon critical"><?= app_icon('alert') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--critical)"><?= $counts['critical'] ?></div>
+            <div class="stat-value" style="color:var(--critical)"><?= $status === 'failed' ? '—' : $counts['critical'] ?></div>
             <div class="stat-label">Critical findings</div>
           </div>
         </div>
@@ -197,7 +197,7 @@ $fix_owner_labels = [
         <div class="stat-card">
           <div class="stat-icon warning"><?= app_icon('alert') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--warning)"><?= $counts['warning'] ?></div>
+            <div class="stat-value" style="color:var(--warning)"><?= $status === 'failed' ? '—' : $counts['warning'] ?></div>
             <div class="stat-label">Warnings</div>
           </div>
         </div>
@@ -206,7 +206,7 @@ $fix_owner_labels = [
         <div class="stat-card">
           <div class="stat-icon info"><?= app_icon('info') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--info)"><?= $counts['info'] ?></div>
+            <div class="stat-value" style="color:var(--info)"><?= $status === 'failed' ? '—' : $counts['info'] ?></div>
             <div class="stat-label">Info / Best practices</div>
           </div>
         </div>

@@ -423,6 +423,8 @@ reliable:
 
 - Resource linking and audit collection have not yet been exercised against
   live Google APIs (vendor method names verified; covered by fakes).
+- `billing.php` sums `credits_used` across the account without the
+  `AuditCredits` rules, so queued audits are not reflected there. Deferred to Phase 2.
 - The current Google login button uses the connection callback rather than a
   complete application sign-in flow.
 - The product design calls for jQuery, while the implemented frontend currently
