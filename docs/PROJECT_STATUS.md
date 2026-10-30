@@ -730,7 +730,11 @@ When implementation work changes the project:
   `target` and `xmlns:xlink` attributes are dropped; URL attributes are
   normalised before the scheme check; `style` values with `expression(`,
   `url(javascript` or `-moz-binding` are dropped. `tests/SitePreviewRendererTest.php`
-  re-parses the output for eight mutation-XSS payloads and asserts one preview
-  script, no `on*` attributes and no `javascript:` URLs. The libxml concern is
+  re-parses the output for thirteen mutation-XSS payloads and asserts one preview
+  script, no `on*` attributes, no `javascript:` URLs, no `style` inside svg, no
+  raw-text or MathML elements, and the preview script as the last body element. The libxml concern is
   removed from Known Implementation Concerns; the `sandbox allow-scripts` CSP in
   `preview-site.php` stays as defence in depth.
+  masterminds/html5 does not apply HTML5 foreign-content rules to raw-text elements,
+  so `style` inside SVG and the raw-text elements (`xmp`, `noembed`, `noframes`,
+  `plaintext`) are removed outright.

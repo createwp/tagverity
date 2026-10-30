@@ -4,7 +4,9 @@ namespace GTMAuditor;
 use Masterminds\HTML5;
 
 final class SitePreviewRenderer {
-    private const REMOVED_ELEMENTS = ['script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'noscript', 'base', 'template', 'portal', 'math'];
+    // xmp, noembed, noframes and plaintext are raw-text elements that masterminds/html5 does not parse
+    // the way browsers do; none of them matter for a visual preview, so they are removed outright.
+    private const REMOVED_ELEMENTS = ['script', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'noscript', 'base', 'template', 'portal', 'math', 'xmp', 'noembed', 'noframes', 'plaintext'];
     private const SVG_REMOVED_ELEMENTS = ['foreignobject', 'animate', 'set', 'handler', 'listener'];
     private const DROPPED_ATTRIBUTES = ['srcdoc', 'formaction', 'ping', 'target', 'xmlns:xlink'];
     private const URL_ATTRIBUTES = ['href', 'src', 'xlink:href', 'action', 'data', 'poster', 'background', 'srcset'];
@@ -71,8 +73,11 @@ final class SitePreviewRenderer {
         ));
         $anywhere = '//*[' . $named(self::REMOVED_ELEMENTS) . ']';
         $inSvg = '//*[(' . $named(self::SVG_REMOVED_ELEMENTS) . ") and ancestor::*[" . self::LOWER . "='svg']]";
+        // style inside svg: masterminds parses it as raw text, a browser parses it as markup, so it is removed.
+        // Page-level style elements (outside svg) are kept.
+        $svgStyle = '//*[' . self::LOWER . "='style' and ancestor::*[" . self::LOWER . "='svg']]";
         $metaRefresh = '//*[' . self::LOWER . "='meta'][translate(@http-equiv,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='refresh']";
-        return implode('|', [$anywhere, $inSvg, $metaRefresh]);
+        return implode('|', [$anywhere, $inSvg, $svgStyle, $metaRefresh]);
     }
 
     private function removeNodes(\DOMXPath $xpath, string $query): void {

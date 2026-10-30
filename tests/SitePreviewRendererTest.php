@@ -40,7 +40,15 @@ $payloads = [
     'svg xlink:href javascript URL' => '<svg><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>',
     'iframe srcdoc' => '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
     'template contents' => '<template><img src=x onerror=alert(1)></template>',
+    'svg style raw-text break-out' => '<svg><style><img src=x onerror=alert(1)></style></svg>',
+    'nested svg style raw-text break-out' => '<svg><g><style><img src=x onerror=alert(1)></style></g></svg>',
+    'plaintext swallows preview script' => '<plaintext><img src=x onerror=alert(1)>',
+    'noembed raw-text break-out' => '<noembed><img title="</noembed><img src=x onerror=alert(1)>"></noembed>',
+    'noframes raw-text break-out' => '<noframes><img title="</noframes><img src=x onerror=alert(1)>"></noframes>',
 ];
+
+// Element local names that must never reach the output (raw-text or foreign-content differential-prone).
+$forbiddenElements = ['plaintext', 'xmp', 'noembed', 'noframes', 'math'];
 
 $renderer = new SitePreviewRenderer();
 $reparser = new HTML5();
@@ -57,6 +65,40 @@ foreach ($payloads as $label => $payload) {
     }
     if (strpos($scripts[0]->textContent, 'tagverity') === false) {
         previewTestFail("{$label}: the only script is not the preview script\nOutput:\n{$output}");
+    }
+
+    // (d) no style element inside svg (a browser parses its content as markup, Masterminds as raw text).
+    foreach ($elements as $element) {
+        if (previewTestLocalName($element) !== 'style') {
+            continue;
+        }
+        for ($ancestor = $element->parentNode; $ancestor instanceof \DOMElement; $ancestor = $ancestor->parentNode) {
+            if (previewTestLocalName($ancestor) === 'svg') {
+                previewTestFail("{$label}: style element inside svg\nOutput:\n{$output}");
+            }
+        }
+    }
+
+    // (e) no raw-text or foreign-content element that browsers treat differently.
+    foreach ($elements as $element) {
+        if (in_array(previewTestLocalName($element), $forbiddenElements, true)) {
+            previewTestFail("{$label}: forbidden <" . previewTestLocalName($element) . "> element in output\nOutput:\n{$output}");
+        }
+    }
+
+    // (f) the preview script is the last element child of body, so nothing swallowed it.
+    $bodies = $dom->getElementsByTagName('body');
+    $body = $bodies->item(0);
+    $lastElement = null;
+    if ($body !== null) {
+        foreach ($body->childNodes as $child) {
+            if ($child instanceof \DOMElement) {
+                $lastElement = $child;
+            }
+        }
+    }
+    if ($lastElement === null || previewTestLocalName($lastElement) !== 'script' || strpos($lastElement->textContent, 'tagverity') === false) {
+        previewTestFail("{$label}: preview script is not the last element child of body\nOutput:\n{$output}");
     }
 
     foreach ($elements as $element) {
