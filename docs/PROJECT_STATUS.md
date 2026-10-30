@@ -1,7 +1,7 @@
 # GTM Auditor Project Status
 
 **Document type:** Living implementation record
-**Last updated:** 2026-07-31
+**Last updated:** 2026-10-30
 **Product specification:**
 [`docs/superpowers/specs/2026-06-26-gtm-auditor-design.md`](superpowers/specs/2026-06-26-gtm-auditor-design.md)
 
@@ -194,6 +194,25 @@ Audit request
 - Audit report filtering, severity summaries, recommendations, evidence, and
   plan-gated developer notes
 
+### Real audit data and resource linking
+
+- Users choose which GA4 properties (grouped by GA4 account) and GTM containers
+  to link to each client; connecting Google imports nothing automatically.
+- An account can connect several Google logins, and each client has one audit
+  target per resource type.
+- Audits collect live GTM and GA4 data and record a status per source
+  (`success`, `not_applicable`, `permission_denied`, `authentication_failed`,
+  `quota_limited`, `timed_out`, `unavailable`, `insufficient_coverage`).
+- Each audit ends `complete`, `partial` or `failed` as defined in
+  [`docs/AUDIT_DEFINITION_OF_DONE.md`](AUDIT_DEFINITION_OF_DONE.md). Only a
+  complete audit stores a health score; a `(not set)` score gate caps the score
+  at 1.
+- The audit report shows a Data coverage card explaining each source in plain
+  language. Partial and failed audits show "Score unavailable" instead of a
+  number, and the dashboard and client list never show a missing score as 0.
+- Monthly audit credits count queued, running, complete and partial audits, so
+  a queued audit cannot be started beyond the plan limit.
+
 ### Scan-led Onboarding MVP
 
 - Authenticated, client-scoped tracking setup page
@@ -362,8 +381,9 @@ Register or log in
   -> resolve readiness blockers before external publication
 ```
 
-The earlier Google connection and audit path still exists, but its discovery and
-data-hydration steps remain incomplete. Onboarding and visual mapping create
+The Google connection and audit path lets the user choose which GA4 properties
+and GTM containers to link, then runs audits on live data (see
+"Real audit data and resource linking"). Onboarding and visual mapping create
 draft plans and templates. The release workflow can version and approve selected
 drafts, but it does not yet observe live SPA behaviour, create platform tags, or
 publish externally.
@@ -372,12 +392,6 @@ publish externally.
 
 ### Phase 1 Blockers
 
-- `api/oauth-callback.php` does not yet extract the Google email or subject ID.
-- OAuth completion does not yet run auto-discovery or populate GTM containers,
-  GA4 properties, streams, BigQuery datasets, domains, or mapping tables.
-- `src/AuditJobRunner.php` currently passes empty GTM and GA4 datasets to the
-  audit engine. A job can therefore complete with no findings and a score of 100
-  without performing a real audit.
 - `domain-map.php` is a text stub; the SVG relationship map and domain
   verification workflow are not implemented.
 - Billing pages exist, but `api/create-checkout.php` and the Stripe webhook flow
@@ -407,14 +421,10 @@ publish externally.
 These observations require resolution before the audit workflow is considered
 reliable:
 
-- The audit-credit query in `api/trigger-audit.php` discards the prepared
-  statement result and uses `FOUND_ROWS()`, so credit enforcement is incorrect.
-- Dashboard polling only begins for jobs already marked `running`. A newly
-  queued job may not automatically refresh after cron completes it.
+- Resource linking and audit collection have not yet been exercised against
+  live Google APIs (vendor method names verified; covered by fakes).
 - The current Google login button uses the connection callback rather than a
   complete application sign-in flow.
-- The OAuth connection row uses an empty `google_sub` until identity extraction
-  is implemented, limiting reliable multi-connection upserts.
 - The product design calls for jQuery, while the implemented frontend currently
   uses vanilla JavaScript and `fetch()`.
 - `assets/js/app.js` includes a native `window.confirm()` helper, while the
@@ -551,6 +561,7 @@ When implementation work changes the project:
 | 2026-10-27 | Benchmarked the product against current GTM, Tealium, Segment, mParticle, RudderStack, and PostHog/Heap/Amplitude-style point-and-click tagging; identified live visual tagging as the highest-leverage gap in the category and scoped a prioritised roadmap (`docs/COMPETITIVE_LANDSCAPE_AND_ROADMAP.md`). |
 | 2026-10-27 | Approved the live visual tagging design (`docs/superpowers/specs/2026-10-27-live-visual-tagging-design.md`): a dormant install snippet activated by a short-lived token, reusing the static mapper's selector logic and the existing dashboard save flow via `window.opener.postMessage` rather than a new save path. Matched the product's existing self-reported domain-trust level rather than requiring new DNS/meta-tag ownership verification. |
 | 2026-10-27 | Discovered during implementation that comparing only a scan's root hostname (not the full set of hosts/origins a scan actually touched) breaks both the new live flow and the existing static mapper for any site whose root redirects to a different host (e.g. apex to www) — fixed by scoping an allowlist to the root host plus only its apex/www sibling, deliberately excluding any other host a scan's redirects may have passed through. |
+| 2026-10-30 | Connecting Google no longer imports resources automatically; users choose which GA4 properties and GTM containers to link to each client, and an account may connect several Google logins. |
 
 ## Change Log
 
@@ -730,3 +741,20 @@ When implementation work changes the project:
   a genuine `window.opener` relationship in this pass (verified instead by
   two independent code reviews); all test data and temporary files were
   removed afterward.
+
+### 2026-10-30
+
+- Connecting Google no longer imports resources automatically. Users choose
+  which GA4 properties (grouped by GA4 account) and GTM containers to link to
+  each client, an account can connect several Google logins, and each client
+  has an audit target per resource.
+- Audits run on live GTM and GA4 data and record a status per source. Each
+  audit ends `complete`, `partial` or `failed`, and only a complete audit stores
+  a health score. A `(not set)` score gate caps the score at 1.
+- Added a Data coverage card to the audit report that explains each source in
+  plain language. Partial and failed audits show "Score unavailable", and the
+  dashboard and client list show a partial audit's status rather than a score.
+- Fixed the audit-credit count so queued audits count against the plan limit.
+  The dashboard credit tile now uses the same rule.
+- Removed the resolved OAuth identity, auto-discovery, empty-dataset, credit
+  query, dashboard polling and `google_sub` items from this record.

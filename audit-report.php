@@ -3,6 +3,7 @@
 require_once __DIR__ . '/includes/permissions.php';
 require_once __DIR__ . '/includes/plans.php';
 require_once __DIR__ . '/includes/icons.php';
+require_once __DIR__ . '/src/AuditCoverageView.php';
 $user        = require_auth();
 $active_page = 'audits';
 
@@ -37,7 +38,24 @@ foreach ($findings as $f) {
     $by_owner[$f['fix_owner']] = ($by_owner[$f['fix_owner']] ?? 0) + 1;
 }
 
-$score = (int)($job['health_score'] ?? 0);
+// A health score exists only for complete audits. NULL must never be shown as 0.
+$status    = (string)$job['status'];
+$has_score = $job['health_score'] !== null;
+$score     = $has_score ? (int)$job['health_score'] : 0;
+$is_unscored_final = in_array($status, ['partial', 'failed'], true);
+
+$source_status = null;
+if ($job['source_status'] !== null && $job['source_status'] !== '') {
+    $decoded_status = json_decode((string)$job['source_status'], true);
+    $source_status  = is_array($decoded_status) ? $decoded_status : null;
+}
+$coverage_rows = (new GTMAuditor\AuditCoverageView())->describe($source_status);
+$coverage_badges = [
+    'ok'    => ['badge-success', 'Checked'],
+    'warn'  => ['badge-warning', 'Not checked'],
+    'muted' => ['badge-neutral', 'Not included'],
+];
+
 function scoreColor(int $s): string {
     return $s >= 80 ? '#10b981' : ($s >= 50 ? '#f59e0b' : '#ef4444');
 }
@@ -134,6 +152,7 @@ $fix_owner_labels = [
 
         <!-- Health Score -->
         <div class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+          <?php if ($has_score): ?>
           <?php
             $r = 40; $circ = 2 * M_PI * $r;
             $offset = $circ - ($score / 100) * $circ;
@@ -152,6 +171,17 @@ $fix_owner_labels = [
           </div>
           <div style="font-size:0.8rem;font-weight:600;color:<?= $colour ?>;margin-top:4px"><?= scoreLabel($score) ?></div>
           <div class="health-score-label">Overall Health Score</div>
+          <?php elseif ($is_unscored_final): ?>
+          <div class="stat-value" style="color:var(--text-muted);font-size:1.6rem">—</div>
+          <span class="badge badge-<?= $status === 'partial' ? 'warning' : 'critical' ?>" style="margin-top:var(--space-2)"><?= htmlspecialchars(ucfirst($status), ENT_QUOTES, 'UTF-8') ?></span>
+          <div style="font-size:0.8rem;font-weight:600;margin-top:var(--space-2)">Score unavailable</div>
+          <p class="text-xs text-muted" style="margin-top:var(--space-1);max-width:240px">Some data sources couldn't be checked, so we can't give a trustworthy score yet.</p>
+          <div class="health-score-label">Overall Health Score</div>
+          <?php else: ?>
+          <div class="stat-value" style="color:var(--text-muted);font-size:1.6rem">—</div>
+          <div style="font-size:0.8rem;font-weight:600;margin-top:var(--space-2)"><?= in_array($status, ['queued', 'running'], true) ? 'Audit still running' : 'Score unavailable' ?></div>
+          <div class="health-score-label">Overall Health Score</div>
+          <?php endif; ?>
         </div>
 
         <!-- Critical -->
@@ -182,6 +212,40 @@ $fix_owner_labels = [
         </div>
       </div>
 
+      <!-- ── Data Coverage ───────────────────────────────────────────────────── -->
+      <div class="card mb-6">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Data coverage</div>
+            <div class="card-subtitle">Which data sources we could check for this audit</div>
+          </div>
+        </div>
+        <?php foreach ($coverage_rows as $row):
+          [$cov_badge, $cov_label] = $coverage_badges[$row['tone']] ?? $coverage_badges['warn'];
+          if ($row['status'] === 'not_recorded') {
+              $cov_label = 'Not recorded';
+          }
+        ?>
+        <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-3) 0;border-top:1px solid var(--border)">
+          <span class="badge <?= $cov_badge ?>"><?= htmlspecialchars($cov_label, ENT_QUOTES, 'UTF-8') ?></span>
+          <div style="font-weight:600;font-size:0.85rem;min-width:140px"><?= htmlspecialchars($row['source'], ENT_QUOTES, 'UTF-8') ?></div>
+          <div class="text-sm text-muted" style="flex:1;min-width:200px"><?= htmlspecialchars($row['message'], ENT_QUOTES, 'UTF-8') ?></div>
+        </div>
+        <?php endforeach; ?>
+        <?php
+          $footnote = [];
+          if ($source_status !== null && !empty($source_status['rule_set_version'])) {
+              $footnote[] = 'Rule set ' . (string)$source_status['rule_set_version'];
+          }
+          if ($source_status !== null && isset($source_status['ga4_window_days'])) {
+              $footnote[] = 'GA4 window ' . (int)$source_status['ga4_window_days'] . ' days';
+          }
+        ?>
+        <?php if (!empty($footnote)): ?>
+        <p class="text-xs text-muted" style="margin-top:var(--space-3);margin-bottom:0"><?= htmlspecialchars(implode(' · ', $footnote), ENT_QUOTES, 'UTF-8') ?></p>
+        <?php endif; ?>
+      </div>
+
       <!-- ── Fix Owner Breakdown ─────────────────────────────────────────────── -->
       <?php if (!empty($by_owner)): ?>
       <div class="card mb-6">
@@ -203,6 +267,13 @@ $fix_owner_labels = [
       </div>
       <?php endif; ?>
 
+      <?php if ($is_unscored_final && !empty($findings)): ?>
+      <div class="alert alert-warning mb-4">
+        <span class="alert-icon"><?= app_icon('alert') ?></span>
+        <span>These findings come from the data we could check. Sources marked "Not checked" above may hide other issues.</span>
+      </div>
+      <?php endif; ?>
+
       <!-- ── Filter bar ─────────────────────────────────────────────────────── -->
       <?php if (!empty($findings)): ?>
       <div class="filter-bar">
@@ -214,11 +285,29 @@ $fix_owner_labels = [
       <?php endif; ?>
 
       <!-- ── Findings by Category ───────────────────────────────────────────── -->
-      <?php if (empty($findings)): ?>
+      <?php if (empty($findings) && $status === 'complete'): ?>
       <div class="empty-state">
         <div class="empty-state-icon"><?= app_icon('check-circle') ?></div>
         <h3>No findings — looking great!</h3>
         <p>This audit found no issues with your GTM or GA4 implementation.</p>
+      </div>
+      <?php elseif (empty($findings) && $status === 'partial'): ?>
+      <div class="empty-state">
+        <div class="empty-state-icon"><?= app_icon('alert') ?></div>
+        <h3>No findings in the data we could check</h3>
+        <p>Some data sources couldn't be checked, so this isn't a clean result. See Data coverage above.</p>
+      </div>
+      <?php elseif (empty($findings) && $status === 'failed'): ?>
+      <div class="empty-state">
+        <div class="empty-state-icon"><?= app_icon('alert') ?></div>
+        <h3>No findings to report</h3>
+        <p>We couldn't check the data needed for this audit, so it can't tell you whether anything is wrong.</p>
+      </div>
+      <?php elseif (empty($findings)): ?>
+      <div class="empty-state">
+        <div class="empty-state-icon"><?= app_icon('dashboard') ?></div>
+        <h3>Audit still running</h3>
+        <p>Results appear here when the audit finishes.</p>
       </div>
       <?php else: ?>
 

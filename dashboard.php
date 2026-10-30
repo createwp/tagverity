@@ -2,6 +2,7 @@
 // ─── Dashboard ─────────────────────────────────────────────────────────────────
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/plans.php';
+require_once __DIR__ . '/src/AuditCredits.php';
 $user        = require_auth();
 $active_page = 'dashboard';
 
@@ -31,32 +32,40 @@ $tracking_setup_label = $tracking_setup_status === 'plan_ready'
 // ── Stats ──────────────────────────────────────────────────────────────────────
 $total_audits = 0;
 $last_score   = null;
+$last_status  = null;
 $critical_count = $warning_count = $info_count = 0;
 $recent_audits  = [];
 
 if ($client_id) {
-    // Total audits run for this client
-    $s = $pdo->prepare("SELECT COUNT(*) FROM audit_jobs WHERE client_id = ? AND status = 'complete'");
+    // Total audits run for this client (partial audits ran too; failed ones did not)
+    $s = $pdo->prepare("SELECT COUNT(*) FROM audit_jobs WHERE client_id = ? AND status IN ('complete','partial')");
     $s->execute([$client_id]);
     $total_audits = (int)$s->fetchColumn();
 
-    // Last health score
-    $s = $pdo->prepare("SELECT health_score, completed_at FROM audit_jobs WHERE client_id = ? AND status = 'complete' ORDER BY completed_at DESC LIMIT 1");
+    // Latest audit summary. Partial audits are included so the coverage problem is visible.
+    // The score is NULL unless the audit is complete, so it is never shown as 0.
+    $s = $pdo->prepare(
+        "SELECT id, status, health_score, completed_at FROM audit_jobs
+         WHERE client_id = ? AND status IN ('complete','partial')
+         ORDER BY completed_at DESC LIMIT 1"
+    );
     $s->execute([$client_id]);
     $last_job = $s->fetch();
-    $last_score = $last_job ? (int)$last_job['health_score'] : null;
-
-    // Finding counts from the most recent complete job
     if ($last_job) {
+        $last_status = $last_job['status'];
+        $last_score  = $last_job['health_score'] !== null ? (int)$last_job['health_score'] : null;
+    }
+
+    // Finding counts from the latest audit. Counts are shown only for complete audits,
+    // because a partial audit's counts reflect only the data that could be checked.
+    if ($last_job && $last_status === 'complete') {
         $s = $pdo->prepare(
             "SELECT severity, COUNT(*) as cnt
-             FROM audit_findings af
-             JOIN audit_jobs aj ON aj.id = af.audit_job_id
-             WHERE aj.client_id = ? AND aj.status = 'complete'
-             AND aj.completed_at = ?
+             FROM audit_findings
+             WHERE audit_job_id = ?
              GROUP BY severity"
         );
-        $s->execute([$client_id, $last_job['completed_at']]);
+        $s->execute([(int)$last_job['id']]);
         foreach ($s->fetchAll() as $row) {
             if ($row['severity'] === 'critical') $critical_count = (int)$row['cnt'];
             if ($row['severity'] === 'warning')  $warning_count  = (int)$row['cnt'];
@@ -77,12 +86,8 @@ if ($client_id) {
 $credits_used  = 0;
 $credits_limit = plan_limit('audit_credits');
 if ($client_id) {
-    $s = $pdo->prepare(
-        "SELECT COUNT(*) FROM audit_jobs
-         WHERE client_id = ? AND MONTH(created_at) = MONTH(NOW()) AND YEAR(created_at) = YEAR(NOW())"
-    );
-    $s->execute([$client_id]);
-    $credits_used = (int)$s->fetchColumn();
+    // Same rule as the trigger-audit limit: queued, running, complete and partial count; failed does not.
+    $credits_used = GTMAuditor\AuditCredits::usedThisMonth($pdo, $client_id);
 }
 
 // ── CSRF for the Trigger Audit button ─────────────────────────────────────────
@@ -181,6 +186,11 @@ function scoreColor(int $score): string {
             <span class="health-score-value" style="color:<?= $colour ?>"><?= $last_score ?></span>
           </div>
           <div class="health-score-label">Health Score</div>
+          <?php elseif (in_array($last_status, ['partial'], true)): ?>
+          <div class="stat-icon warning" style="margin:0 auto"><?= app_icon('alert') ?></div>
+          <div class="stat-value" style="margin-top:var(--space-2);color:var(--text-muted)">—</div>
+          <span class="badge badge-warning" style="margin-top:var(--space-1)">Partial</span>
+          <div class="stat-label">Score unavailable: some data couldn't be checked</div>
           <?php else: ?>
           <div class="stat-icon brand" style="margin:0 auto"><?= app_icon('dashboard') ?></div>
           <div class="stat-value" style="margin-top:var(--space-2)">—</div>
@@ -192,7 +202,7 @@ function scoreColor(int $score): string {
         <div class="stat-card">
           <div class="stat-icon critical"><?= app_icon('alert') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--critical)"><?= $critical_count ?></div>
+            <div class="stat-value" style="color:var(--critical)"><?= $last_status === 'complete' || $last_status === null ? $critical_count : '—' ?></div>
             <div class="stat-label">Critical findings</div>
           </div>
         </div>
@@ -201,7 +211,7 @@ function scoreColor(int $score): string {
         <div class="stat-card">
           <div class="stat-icon warning"><?= app_icon('alert') ?></div>
           <div>
-            <div class="stat-value" style="color:var(--warning)"><?= $warning_count ?></div>
+            <div class="stat-value" style="color:var(--warning)"><?= $last_status === 'complete' || $last_status === null ? $warning_count : '—' ?></div>
             <div class="stat-label">Warnings</div>
           </div>
         </div>
@@ -270,13 +280,18 @@ function scoreColor(int $score): string {
                   <span style="font-weight:700;color:<?= $score_colour ?>"><?= (int)$job['health_score'] ?></span>
                   <?php else: ?>
                   <span class="text-muted">—</span>
+                  <?php if ($job['status'] === 'partial'): ?>
+                  <span class="badge badge-warning" style="margin-left:var(--space-1)">Partial</span>
+                  <?php elseif ($job['status'] === 'failed'): ?>
+                  <span class="badge badge-critical" style="margin-left:var(--space-1)">Failed</span>
+                  <?php endif; ?>
                   <?php endif; ?>
                 </td>
                 <td><span class="badge badge-neutral"><?= htmlspecialchars($job['triggered_by'], ENT_QUOTES, 'UTF-8') ?></span></td>
                 <td class="td-mono"><?= $job['started_at'] ? date('d M H:i', strtotime($job['started_at'])) : '—' ?></td>
                 <td class="td-mono"><?= $dur ?: '—' ?></td>
                 <td>
-                  <?php if ($job['status'] === 'complete'): ?>
+                  <?php if ($job['status'] === 'complete' || $job['status'] === 'partial'): ?>
                   <a href="audit-report.php?id=<?= (int)$job['id'] ?>" class="btn btn-sm btn-secondary">View Report</a>
                   <?php elseif ($job['status'] === 'failed'): ?>
                   <span class="badge badge-critical">Failed</span>

@@ -791,6 +791,7 @@ tbody td {
 .status-dot.running  { background: var(--warning); animation: pulse 1s ease infinite; }
 .status-dot.complete { background: var(--success); }
 .status-dot.failed   { background: var(--critical); }
+.status-dot.partial  { background: var(--warning); }
 
 /* Application modal */
 .app-modal-overlay { position: fixed; inset: 0; z-index: 5000; display: flex; align-items: center; justify-content: center; padding: var(--space-5); background: rgba(34,37,117,0.18); backdrop-filter: blur(6px); opacity: 0; transition: opacity 150ms var(--ease); }
