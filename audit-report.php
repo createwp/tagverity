@@ -139,8 +139,8 @@ $fix_owner_labels = [
       </div>
       <div class="page-header-actions">
         <a href="dashboard.php" class="btn btn-ghost btn-sm"><?= app_icon('arrow-left') ?> Dashboard</a>
-        <?php if (has_feature('developer_notes')): ?>
-        <a href="#" class="btn btn-secondary btn-sm"><?= app_icon('download') ?> Export PDF</a>
+        <?php if (in_array($status, ['complete', 'partial', 'failed'], true)): ?>
+        <a href="audit-report-pdf.php?id=<?= (int)$audit_job_id ?>" class="btn btn-secondary btn-sm"><?= app_icon('download') ?> Export PDF</a>
         <?php endif; ?>
       </div>
     </div>

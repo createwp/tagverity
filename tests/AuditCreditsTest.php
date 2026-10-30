@@ -1,5 +1,5 @@
 <?php
-// DB-backed test for monthly audit credit counting. Creates its own account and client,
+// DB-backed test for monthly audit credit counting. Creates its own accounts and clients,
 // inserts audit_jobs rows with explicit status and created_at, and removes them in finally.
 
 require_once __DIR__ . '/../includes/config.php';
@@ -26,9 +26,17 @@ function assert_credits(string $label, $expected, $actual): void
     }
 }
 
+// hasCreditsLeft needs no database, so it is checked before the DB work.
+assert_credits('hasCreditsLeft: at the limit is out of credits', false, AuditCredits::hasCreditsLeft(5, 5));
+assert_credits('hasCreditsLeft: one under the limit has credits', true, AuditCredits::hasCreditsLeft(4, 5));
+assert_credits('hasCreditsLeft: unlimited (-1) always has credits', true, AuditCredits::hasCreditsLeft(999, -1));
+
 $accountId = TestFixtures::createAccount($pdo);
+$otherAccountId = TestFixtures::createAccount($pdo);
 try {
-    $clientId = TestFixtures::createClient($pdo, $accountId);
+    $clientA = TestFixtures::createClient($pdo, $accountId);
+    $clientB = TestFixtures::createClient($pdo, $accountId);
+    $otherClient = TestFixtures::createClient($pdo, $otherAccountId);
 
     // created_at is set by MySQL NOW() so it shares the clock the counter's window uses.
     $insert = $pdo->prepare(
@@ -40,21 +48,30 @@ try {
          VALUES (?, 'manual', ?, ?, NOW() - INTERVAL 40 DAY)"
     );
 
-    // Queued job: started_at is NULL until the runner picks it up, so it must still count.
-    $insert->execute([$clientId, 'queued', null]);
-    // Complete and partial jobs are charged; failed jobs are not.
-    $insert->execute([$clientId, 'complete', date('Y-m-d H:i:s')]);
-    $insert->execute([$clientId, 'partial', date('Y-m-d H:i:s')]);
-    $insert->execute([$clientId, 'failed', date('Y-m-d H:i:s')]);
+    // Client A: two complete jobs and one queued job (started_at is NULL until the runner picks it up).
+    $insert->execute([$clientA, 'complete', date('Y-m-d H:i:s')]);
+    $insert->execute([$clientA, 'complete', date('Y-m-d H:i:s')]);
+    $insert->execute([$clientA, 'queued', null]);
+    // Client B: one partial job. A failed job is not charged.
+    $insert->execute([$clientB, 'partial', date('Y-m-d H:i:s')]);
+    $insert->execute([$clientB, 'failed', date('Y-m-d H:i:s')]);
 
-    assert_credits('queued + complete + partial this month, failed excluded', 3, AuditCredits::usedThisMonth($pdo, $clientId));
+    assert_credits('account total across both clients', 4, AuditCredits::usedThisMonthForAccount($pdo, $accountId));
 
-    // A complete job from 40 days ago is outside the current month and must not count.
-    $insertOld->execute([$clientId, 'complete', date('Y-m-d H:i:s', strtotime('-40 days'))]);
+    // A job from 40 days ago is outside the current month and must not count.
+    $insertOld->execute([$clientB, 'complete', date('Y-m-d H:i:s', strtotime('-40 days'))]);
 
-    assert_credits('job from last month not counted', 3, AuditCredits::usedThisMonth($pdo, $clientId));
+    assert_credits('job from last month not counted', 4, AuditCredits::usedThisMonthForAccount($pdo, $accountId));
+
+    // Another account's jobs must not count against this account.
+    $insert->execute([$otherClient, 'complete', date('Y-m-d H:i:s')]);
+    $insert->execute([$otherClient, 'running', date('Y-m-d H:i:s')]);
+
+    assert_credits('other account jobs not counted', 4, AuditCredits::usedThisMonthForAccount($pdo, $accountId));
+    assert_credits('other account sees only its own jobs', 2, AuditCredits::usedThisMonthForAccount($pdo, $otherAccountId));
 
     echo "AuditCreditsTest ... PASS\n";
 } finally {
     TestFixtures::cleanupAccount($pdo, $accountId);
+    TestFixtures::cleanupAccount($pdo, $otherAccountId);
 }

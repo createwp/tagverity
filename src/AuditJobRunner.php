@@ -7,6 +7,7 @@ require_once __DIR__ . '/AuditEngine.php';
 require_once __DIR__ . '/AuditOutcome.php';
 require_once __DIR__ . '/AuditTargetResolver.php';
 require_once __DIR__ . '/SourceStatus.php';
+require_once __DIR__ . '/DomainMap.php';
 
 // ─── Audit Job Runner — executed by the SiteGround cron every 5 minutes ──────
 /**
@@ -93,6 +94,35 @@ class AuditJobRunner
     }
 
     /**
+     * Verified hosts for check 3.4: the hosts of domains answered "Yes", plus legacy rows that
+     * were verified before hosts were stored (verified = 1, empty host). Legacy hosts are derived
+     * from the url.
+     *
+     * @return string[]  De-duplicated bare hosts
+     */
+    private function loadVerifiedDomainHosts(int $clientId): array
+    {
+        $byHost = $this->db->prepare(
+            "SELECT host FROM domains WHERE client_id = ? AND confirmation = 'yours' AND host <> ''"
+        );
+        $byHost->execute([$clientId]);
+        $hosts = $byHost->fetchAll(\PDO::FETCH_COLUMN);
+
+        $legacy = $this->db->prepare(
+            "SELECT url FROM domains WHERE client_id = ? AND verified = 1 AND (host IS NULL OR host = '')"
+        );
+        $legacy->execute([$clientId]);
+        foreach ($legacy->fetchAll(\PDO::FETCH_COLUMN) as $url) {
+            $host = DomainMap::normaliseHost((string)$url);
+            if ($host !== null) {
+                $hosts[] = $host;
+            }
+        }
+
+        return array_values(array_unique(array_map('strval', $hosts)));
+    }
+
+    /**
      * Core processing logic for a single audit job.
      *
      * @param array $job  audit_jobs row
@@ -112,9 +142,15 @@ class AuditJobRunner
         $collected = $this->collectData($target);
 
         // 3. Run the audit engine
-        $verified = $this->db->prepare("SELECT url FROM domains WHERE client_id = ? AND verified = 1");
-        $verified->execute([$clientId]);
-        $verifiedDomains = $verified->fetchAll(\PDO::FETCH_COLUMN);
+        $verifiedDomains = $this->loadVerifiedDomainHosts($clientId);
+
+        $flagged = $this->db->prepare(
+            "SELECT host, confirmation FROM domains
+             WHERE client_id = ? AND confirmation IN ('not_yours', 'investigate') AND host <> ''
+             ORDER BY id"
+        );
+        $flagged->execute([$clientId]);
+        $flaggedDomains = $flagged->fetchAll(\PDO::FETCH_ASSOC);
 
         $engine   = new AuditEngine(
             $collected['gtm'],
@@ -123,7 +159,8 @@ class AuditJobRunner
             $clientRow,
             (int)$job['id'],
             (string)($target['ga4_property_id'] ?? ''),
-            $verifiedDomains
+            $verifiedDomains,
+            $flaggedDomains
         );
         $findings = $engine->run();
 

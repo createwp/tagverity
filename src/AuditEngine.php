@@ -34,6 +34,9 @@ class AuditEngine
     /** Verified domain URLs for this client (to detect unexpected domains) */
     private array $verifiedDomains;
 
+    /** Domains the user marked not yours or under investigation: list of ['host', 'confirmation'] */
+    private array $flaggedDomains;
+
     public function __construct(
         array  $gtm,
         array  $ga4,
@@ -41,7 +44,8 @@ class AuditEngine
         array  $client,
         int    $jobId,
         string $ga4PropertyId    = '',
-        array  $verifiedDomains  = []
+        array  $verifiedDomains  = [],
+        array  $flaggedDomains   = []
     ) {
         $this->gtm             = $gtm;
         $this->ga4             = $ga4;
@@ -50,6 +54,7 @@ class AuditEngine
         $this->jobId           = $jobId;
         $this->ga4PropertyId   = $ga4PropertyId;
         $this->verifiedDomains = $verifiedDomains;
+        $this->flaggedDomains  = $flaggedDomains;
     }
 
     /**
@@ -66,7 +71,46 @@ class AuditEngine
         if (!empty($this->ga4)) {
             $this->runDataQualityChecks();
         }
+        if (!empty($this->gtm) || !empty($this->ga4)) {
+            $this->runDomainOwnershipChecks();
+        }
         return $this->findings;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Domain ownership answers (Domain map)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * One critical finding per domain the user marked "No" (not_yours) or "Investigate".
+     * Domains marked "Yes" are verified and are not reported here.
+     */
+    private function runDomainOwnershipChecks(): void
+    {
+        foreach ($this->flaggedDomains as $domain) {
+            $host         = (string)($domain['host'] ?? '');
+            $confirmation = (string)($domain['confirmation'] ?? '');
+            if ($host === '') continue;
+
+            if ($confirmation === 'not_yours') {
+                $title = 'Domain marked as not yours';
+            } elseif ($confirmation === 'investigate') {
+                $title = 'Domain under investigation';
+            } else {
+                continue;
+            }
+
+            $this->addFinding(
+                'data_quality', 'critical',
+                $title,
+                'Someone on your team said ' . $host . ' is not one of your sites (or asked to look into it), but it is connected to your tracking. Data from it may be polluting your reports.',
+                "Check where this domain comes from. If it isn't yours, add it to GA4's unwanted referrals or filter it out, and remove it from your tags. If it is yours, mark it as yours on the Domain map.",
+                'multiple',
+                $host,
+                ['host' => $host, 'confirmation' => $confirmation],
+                'Domain ownership answer recorded on the Domain map. Change the answer there if this was a mistake.'
+            );
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════

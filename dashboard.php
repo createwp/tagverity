@@ -83,12 +83,10 @@ if ($client_id) {
 }
 
 // ── Plan info ──────────────────────────────────────────────────────────────────
-$credits_used  = 0;
 $credits_limit = plan_limit('audit_credits');
-if ($client_id) {
-    // Same rule as the trigger-audit limit: queued, running, complete and partial count; failed does not.
-    $credits_used = GTMAuditor\AuditCredits::usedThisMonth($pdo, $client_id);
-}
+// Same rule as the trigger-audit limit: queued, running, complete and partial count; failed does not.
+// Credits are per account, so this counts across all of the account's clients.
+$credits_used  = GTMAuditor\AuditCredits::usedThisMonthForAccount($pdo, (int)$user['account_id']);
 
 // ── CSRF for the Trigger Audit button ─────────────────────────────────────────
 if (empty($_SESSION['csrf_token'])) {
