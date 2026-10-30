@@ -11,7 +11,7 @@ final class AuditCredits
     public static function usedThisMonth(\PDO $pdo, int $clientId): int
     {
         // Filter on created_at, not started_at: a queued job has no started_at yet.
-        // The half-open range on created_at lets the index on created_at be used.
+        // The half-open created_at range avoids wrapping the column in MONTH()/YEAR().
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) FROM audit_jobs
              WHERE client_id = ?

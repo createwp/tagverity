@@ -22,8 +22,11 @@ use Google\Service\CloudResourceManager;
  *  - Instantiate the correct Google service client
  *  - Expose clean, typed methods for each API call the audit engine needs
  *
- * Every method wraps its API call in try/catch — failures return null or []
- * rather than crashing the audit job.
+ * AuditDataSource and DiscoverySource methods (liveContainerVersion, ga4Report,
+ * listGa4AccountSummaries, listGa4Streams, listGtmAccountsAndContainers) THROW, so
+ * callers can classify the failure with SourceStatus::fromThrowable(). The legacy
+ * getContainerVersion, runGa4Report and getTotalSessions swallow failures and return
+ * null, [] or 0 for existing callers.
  */
 class GoogleApiClient implements AuditDataSource, DiscoverySource
 {

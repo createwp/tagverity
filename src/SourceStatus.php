@@ -5,7 +5,7 @@ use GuzzleHttp\Exception\ConnectException;
 
 // ─── Source status classification ────────────────────────────────────────────
 /**
- * Canonical status values recorded per audit source (audit_outcomes.source_statuses).
+ * Canonical status values recorded per audit source (audit_jobs.source_status).
  * fromThrowable() maps an exception raised by an outbound data call to one of them.
  */
 final class SourceStatus

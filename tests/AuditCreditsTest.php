@@ -42,16 +42,17 @@ try {
 
     // Queued job: started_at is NULL until the runner picks it up, so it must still count.
     $insert->execute([$clientId, 'queued', null]);
-    // Complete and failed jobs created this month: complete counts, failed does not.
+    // Complete and partial jobs are charged; failed jobs are not.
     $insert->execute([$clientId, 'complete', date('Y-m-d H:i:s')]);
+    $insert->execute([$clientId, 'partial', date('Y-m-d H:i:s')]);
     $insert->execute([$clientId, 'failed', date('Y-m-d H:i:s')]);
 
-    assert_credits('queued + complete this month, failed excluded', 2, AuditCredits::usedThisMonth($pdo, $clientId));
+    assert_credits('queued + complete + partial this month, failed excluded', 3, AuditCredits::usedThisMonth($pdo, $clientId));
 
     // A complete job from 40 days ago is outside the current month and must not count.
     $insertOld->execute([$clientId, 'complete', date('Y-m-d H:i:s', strtotime('-40 days'))]);
 
-    assert_credits('job from last month not counted', 2, AuditCredits::usedThisMonth($pdo, $clientId));
+    assert_credits('job from last month not counted', 3, AuditCredits::usedThisMonth($pdo, $clientId));
 
     echo "AuditCreditsTest ... PASS\n";
 } finally {
