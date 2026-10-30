@@ -14,15 +14,9 @@ $current_plan = $plan_stmt->fetch();
 // Fetch all plans for the picker
 $all_plans = $pdo->query("SELECT * FROM plans ORDER BY id ASC")->fetchAll();
 
-// Credits used this month
-$credit_stmt = $pdo->prepare(
-    "SELECT COALESCE(SUM(aj.credits_used), 0)
-     FROM audit_jobs aj
-     JOIN clients c ON c.id = aj.client_id
-     WHERE c.account_id = ? AND MONTH(aj.created_at) = MONTH(NOW()) AND YEAR(aj.created_at) = YEAR(NOW())"
-);
-$credit_stmt->execute([$user['account_id']]);
-$credits_used = (int)$credit_stmt->fetchColumn();
+// Credits used this month, counted with the same rules as the audit trigger
+require_once __DIR__ . '/src/AuditCredits.php';
+$credits_used  = GTMAuditor\AuditCredits::usedThisMonthForAccount($pdo, (int)$user['account_id']);
 $credits_limit = (int)($current_plan['audit_credits_monthly'] ?? 5);
 ?>
 <!DOCTYPE html>

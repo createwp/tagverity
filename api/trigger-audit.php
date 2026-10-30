@@ -27,11 +27,10 @@ $client    = assert_client_access($client_id); // Exits 403 if not owned
 // Rate limit: max 5 audit triggers per user per 60 seconds
 rate_limit('audit_trigger', (string)$user['id'], 5, 60);
 
-// Check audit credit balance
-$used = GTMAuditor\AuditCredits::usedThisMonth(db(), $client_id);
-
+// Check audit credit balance (per account, across all clients)
+$used  = GTMAuditor\AuditCredits::usedThisMonthForAccount(db(), (int)$user['account_id']);
 $limit = plan_limit('audit_credits');
-if ($used >= $limit) {
+if (!GTMAuditor\AuditCredits::hasCreditsLeft($used, (int)$limit)) {
     http_response_code(403);
     echo json_encode(['error' => 'credit_limit_reached', 'message' => 'Upgrade your plan for more audit credits.']);
     exit;
