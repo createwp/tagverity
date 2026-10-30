@@ -25,13 +25,14 @@ use Google\Service\CloudResourceManager;
  * Every method wraps its API call in try/catch — failures return null or []
  * rather than crashing the audit job.
  */
-class GoogleApiClient
+class GoogleApiClient implements AuditDataSource
 {
     private GoogleClient $client;
 
     /**
      * @param array $connection  Row from google_connections table
      *                           Must include `refresh_token` (AES-256-encrypted)
+     * @throws \RuntimeException  'authentication_failed' (401) when the refresh token is rejected
      */
     public function __construct(array $connection)
     {
@@ -49,7 +50,10 @@ class GoogleApiClient
         // Decrypt the stored refresh token and exchange for a fresh access token.
         // Why: access tokens expire after 1 hour; we always refresh before API calls.
         $refreshToken = decrypt_token($connection['refresh_token']);
-        $this->client->fetchAccessTokenWithRefreshToken($refreshToken);
+        $token = $this->client->fetchAccessTokenWithRefreshToken($refreshToken);
+        if (isset($token['error'])) {
+            throw new \RuntimeException('authentication_failed', 401);
+        }
     }
 
     // ── GTM Management API ────────────────────────────────────────────────────
@@ -90,6 +94,7 @@ class GoogleApiClient
 
     /**
      * Fetch the full live container version (tags, triggers, variables).
+     * Swallows failures and returns null (kept for existing callers).
      *
      * @param string $account_id
      * @param string $container_id
@@ -98,27 +103,38 @@ class GoogleApiClient
     public function getContainerVersion(string $account_id, string $container_id): ?array
     {
         try {
-            $gtm     = new TagManager($this->client);
-            $version = $gtm->accounts_containers_versions->live(
-                "accounts/{$account_id}/containers/{$container_id}"
-            );
-
-            // Serialize objects to plain arrays for easy inspection
-            $serialize = fn($items) => array_map(fn($item) => json_decode(json_encode($item), true), $items ?? []);
-
-            return [
-                'tags'      => $serialize($version->getTag()),
-                'triggers'  => $serialize($version->getTrigger()),
-                'variables' => $serialize($version->getVariable()),
-                'container' => [
-                    'account_id'   => $account_id,
-                    'container_id' => $container_id,
-                ],
-            ];
+            return $this->liveContainerVersion($account_id, $container_id);
         } catch (\Throwable $e) {
             error_log('[GTMAuditor][GTM API] getContainerVersion: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Fetch the full live container version. Throws on failure so the collector can classify it.
+     *
+     * @return array{tags: array, triggers: array, variables: array, container: array{account_id: string, container_id: string}}
+     * @throws \Throwable
+     */
+    public function liveContainerVersion(string $gtmAccountId, string $containerId): array
+    {
+        $gtm     = new TagManager($this->client);
+        $version = $gtm->accounts_containers_versions->live(
+            "accounts/{$gtmAccountId}/containers/{$containerId}"
+        );
+
+        // Serialize objects to plain arrays for easy inspection
+        $serialize = fn($items) => array_map(fn($item) => json_decode(json_encode($item), true), $items ?? []);
+
+        return [
+            'tags'      => $serialize($version->getTag()),
+            'triggers'  => $serialize($version->getTrigger()),
+            'variables' => $serialize($version->getVariable()),
+            'container' => [
+                'account_id'   => $gtmAccountId,
+                'container_id' => $containerId,
+            ],
+        ];
     }
 
     // ── GA4 Admin API — for auto-discovery ───────────────────────────────────
@@ -182,6 +198,7 @@ class GoogleApiClient
 
     /**
      * Run a GA4 reporting query and return structured rows.
+     * Swallows failures and returns [] (kept for existing callers).
      *
      * @param string  $property_id   GA4 property ID (numeric only)
      * @param array   $dimensions    e.g. ['landingPage', 'sessionDefaultChannelGrouping']
@@ -198,46 +215,57 @@ class GoogleApiClient
         int    $limit     = 50
     ): array {
         try {
-            $analyticsData = new AnalyticsData($this->client);
-
-            $dimObjects    = array_map(fn($d) => new Dimension(['name' => $d]), $dimensions);
-            $metricObjects = array_map(fn($m) => new Metric(['name' => $m]), $metrics);
-
-            $request = new RunReportRequest([
-                'dimensions' => $dimObjects,
-                'metrics'    => $metricObjects,
-                'dateRanges' => [new DateRange([
-                    'startDate' => "{$days_back}daysAgo",
-                    'endDate'   => 'today',
-                ])],
-                'limit' => $limit,
-            ]);
-
-            $response = $analyticsData->properties->runReport(
-                "properties/{$property_id}",
-                $request
-            );
-
-            $rows      = [];
-            $dimNames  = array_map(fn($d) => $d->getName(), $response->getDimensionHeaders() ?? []);
-            $metNames  = array_map(fn($m) => $m->getName(), $response->getMetricHeaders() ?? []);
-
-            foreach ($response->getRows() ?? [] as $row) {
-                $item = [];
-                foreach ($row->getDimensionValues() ?? [] as $i => $dv) {
-                    $item[$dimNames[$i] ?? "dim_{$i}"] = $dv->getValue();
-                }
-                foreach ($row->getMetricValues() ?? [] as $i => $mv) {
-                    $item[$metNames[$i] ?? "met_{$i}"] = $mv->getValue();
-                }
-                $rows[] = $item;
-            }
-
-            return $rows;
+            return $this->ga4Report($property_id, $dimensions, $metrics, $days_back, $limit);
         } catch (\Throwable $e) {
             error_log("[GTMAuditor][GA4 Data] runGa4Report(property={$property_id}): " . $e->getMessage());
             return [];
         }
+    }
+
+    /**
+     * Run a GA4 reporting query. Throws on failure so the collector can classify it.
+     *
+     * @return array[]  Array of ['dimension_name' => value, 'metric_name' => value]
+     * @throws \Throwable
+     */
+    public function ga4Report(string $propertyId, array $dimensions, array $metrics, int $daysBack, int $limit): array
+    {
+        $analyticsData = new AnalyticsData($this->client);
+
+        $dimObjects    = array_map(fn($d) => new Dimension(['name' => $d]), $dimensions);
+        $metricObjects = array_map(fn($m) => new Metric(['name' => $m]), $metrics);
+
+        $request = new RunReportRequest([
+            'dimensions' => $dimObjects,
+            'metrics'    => $metricObjects,
+            'dateRanges' => [new DateRange([
+                'startDate' => "{$daysBack}daysAgo",
+                'endDate'   => 'today',
+            ])],
+            'limit' => $limit,
+        ]);
+
+        $response = $analyticsData->properties->runReport(
+            "properties/{$propertyId}",
+            $request
+        );
+
+        $rows      = [];
+        $dimNames  = array_map(fn($d) => $d->getName(), $response->getDimensionHeaders() ?? []);
+        $metNames  = array_map(fn($m) => $m->getName(), $response->getMetricHeaders() ?? []);
+
+        foreach ($response->getRows() ?? [] as $row) {
+            $item = [];
+            foreach ($row->getDimensionValues() ?? [] as $i => $dv) {
+                $item[$dimNames[$i] ?? "dim_{$i}"] = $dv->getValue();
+            }
+            foreach ($row->getMetricValues() ?? [] as $i => $mv) {
+                $item[$metNames[$i] ?? "met_{$i}"] = $mv->getValue();
+            }
+            $rows[] = $item;
+        }
+
+        return $rows;
     }
 
     /**
