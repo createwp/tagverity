@@ -395,7 +395,7 @@ class AuditEngine
                             'Ensure the GA4 Configuration tag fires on All Pages and that no other tags push page_view events before GA4 is initialised. Check tag firing order in GTM.',
                             'gtm',
                             'landing_page dimension',
-                            ['not_set_sessions' => $notSetCount, 'total_sessions' => $totalSessions, 'pct' => $pct],
+                            ['not_set_sessions' => $notSetCount, 'total_sessions' => $totalSessions, 'pct' => $pct, 'score_gate' => $severity === 'critical'],
                             'Root cause: page_view fires before session_start. Fix: ensure GA4 Config tag fires FIRST via tag sequencing. Also check if Enhanced Measurement "Page views" is on while also using a manual page_view tag.'
                         );
                     }
