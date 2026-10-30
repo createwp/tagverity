@@ -457,6 +457,7 @@ As of 2026-07-30:
 - The system PATH points to PHP 7.4.26; validation commands must explicitly use
   `C:\wamp64\bin\php\php8.1.0\php.exe` or update the shell PATH.
 - All PHP files pass syntax validation under the configured local PHP runtime.
+- Run every test with `C:\wamp64\bin\php\php8.1.0\php.exe tests/run.php` (or `composer test` when PATH PHP is 8.1).
 - Composer dependencies are installed.
 - MySQL is reachable and the two onboarding tables were added successfully;
   migration 002 was run twice to confirm idempotency.
@@ -726,14 +727,18 @@ When implementation work changes the project:
   `target` and `xmlns:xlink` attributes are dropped; URL attributes are
   normalised before the scheme check; `style` values with `expression(`,
   `url(javascript` or `-moz-binding` are dropped. `tests/SitePreviewRendererTest.php`
-  re-parses the output for thirteen mutation-XSS payloads and asserts one preview
+  re-parses the output for twenty mutation-XSS payloads and asserts one preview
   script, no `on*` attributes, no `javascript:` URLs, no `style` inside svg, no
   raw-text or MathML elements, and the preview script as the last body element. The libxml concern is
   removed from Known Implementation Concerns; the `sandbox allow-scripts` CSP in
   `preview-site.php` stays as defence in depth.
   masterminds/html5 does not apply HTML5 foreign-content rules to raw-text elements,
   so `style` inside SVG and the raw-text elements (`xmp`, `noembed`, `noframes`,
-  `plaintext`) are removed outright.
+  `plaintext`) are removed outright. Kept page-level `style` elements have every
+  `</` rewritten to `<\/` because masterminds/html5 ends raw text only on the
+  exact `</style>` while browsers also end it on `</style x>`, `</style/>` and
+  similar; the controller verified 34 payloads clean in a real browser parser
+  (Chromium DOMParser).
 - Live visual tagging acknowledgements are now correlated per click: the snippet
   sends a 16-hex-char `selection_id` with each `element_selected` message,
   `element-mapper.js` echoes it in `element_selected_ack`, and the snippet clears
@@ -741,3 +746,16 @@ When implementation work changes the project:
   `assets/js/mapper-snippet.js`, covered by `tests/MapperSnippetAckTest.js`). The
   ack-race and unswept `mapper_sessions` concerns are removed from Known
   Implementation Concerns.
+- Added a single-command test runner, `tests/run.php` (`composer test`). It runs
+  every `tests/*Test.php` and `tests/*Test.js`, prints PASS, FAIL or SKIP for each,
+  and exits 1 on any failure. It only runs from the CLI.
+- Added GitHub Actions CI (`.github/workflows/ci.yml`) on PHP 8.1 with a MySQL 8.0
+  service. It strips the MySQL 5.7-only `SET GLOBAL` lines from the schema, then
+  runs PHP lint, the migrations and the test runner.
+- Added a deny-by-default `.htaccess`: dot-paths, `vendor/`, `tests/`, `docs/`,
+  `logs/`, `storage/`, `sql/`, `src/`, `includes/`, `cron/`, `node_modules/`, `*.md`
+  and the composer manifests return 403. `tests/HtaccessRulesTest.php` checks the rules.
+- Added `MapperSessionManager::purgeExpired()` and `cron/sweep-mapper-sessions.php`,
+  which deletes expired live-mapper sessions. It compares against `UTC_TIMESTAMP()`
+  because `expires_at` is stored in UTC. Production needs the hourly cron line
+  `0 * * * * php /path/to/gtm-auditor/cron/sweep-mapper-sessions.php`.

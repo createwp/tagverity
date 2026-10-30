@@ -14,7 +14,6 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 // Exit code: 0 when no test fails, 1 when any test fails.
 
 $root = dirname(__DIR__);
-$testsDir = $root . DIRECTORY_SEPARATOR . 'tests';
 
 $dirArg = $argv[1] ?? 'tests';
 $dir = $dirArg;
