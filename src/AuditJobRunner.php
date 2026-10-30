@@ -1,13 +1,21 @@
 <?php
 namespace GTMAuditor;
 
+require_once __DIR__ . '/AuditDataSource.php';
+require_once __DIR__ . '/AuditDataCollector.php';
+require_once __DIR__ . '/AuditEngine.php';
+require_once __DIR__ . '/AuditOutcome.php';
+require_once __DIR__ . '/AuditTargetResolver.php';
+require_once __DIR__ . '/SourceStatus.php';
+
 // ─── Audit Job Runner — executed by the SiteGround cron every 5 minutes ──────
 /**
  * The cron worker.
  *
- * Picks up the oldest queued audit_jobs row, fetches data from all active
- * Google APIs, passes data to AuditEngine, persists findings, and marks
- * the job complete.
+ * Picks up the oldest queued audit_jobs row, resolves the client's audit targets,
+ * collects live GTM and GA4 data through one data source per Google connection,
+ * passes the data to AuditEngine, persists findings, and records the outcome
+ * (complete, partial or failed) with its source status.
  *
  * Designed to be called from cron/run-audits.php with:
  *   $runner = new AuditJobRunner();
@@ -17,9 +25,18 @@ class AuditJobRunner
 {
     private \PDO $db;
 
-    public function __construct()
+    /** @var callable(array): AuditDataSource Builds a data source from a google_connections row. */
+    private $sourceFactory;
+
+    /**
+     * @param callable|null $sourceFactory  fn(array $connectionRow): AuditDataSource.
+     *                                      Defaults to GoogleApiClient. Tests inject a fake.
+     */
+    public function __construct(?callable $sourceFactory = null)
     {
         $this->db = \db();
+        $this->sourceFactory = $sourceFactory
+            ?? static fn(array $connectionRow): AuditDataSource => new GoogleApiClient($connectionRow);
     }
 
     /**
@@ -62,11 +79,9 @@ class AuditJobRunner
         }
 
         // ── Process the job ────────────────────────────────────────────────────
+        // process() records the outcome itself. Only an unexpected exception lands here.
         try {
             $this->process($job);
-            $this->db->prepare(
-                "UPDATE audit_jobs SET status = 'complete', completed_at = NOW() WHERE id = ?"
-            )->execute([$job['id']]);
         } catch (\Throwable $e) {
             $this->db->prepare(
                 "UPDATE audit_jobs SET status = 'failed', error_message = ?, completed_at = NOW() WHERE id = ?"
@@ -84,35 +99,38 @@ class AuditJobRunner
      */
     private function process(array $job): void
     {
-        // 1. Load client + google connection
+        $clientId = (int)$job['client_id'];
+
+        // 1. Load client and resolve the audit targets
         $client = $this->db->prepare("SELECT * FROM clients WHERE id = ? LIMIT 1");
-        $client->execute([$job['client_id']]);
+        $client->execute([$clientId]);
         $clientRow = $client->fetch();
 
-        $conn = $this->db->prepare(
-            "SELECT gc.* FROM google_connections gc
-             JOIN gtm_containers gtm ON gtm.google_connection_id = gc.id
-             WHERE gtm.client_id = ? LIMIT 1"
-        );
-        $conn->execute([$job['client_id']]);
-        $connection = $conn->fetch();
+        $target = (new AuditTargetResolver())->resolve($this->db, $clientId);
 
-        if (!$connection) {
-            throw new \RuntimeException("No Google connection found for client #{$job['client_id']}");
-        }
-
-        // 2. Fetch data from Google APIs
-        $apiClient = new GoogleApiClient($connection);
-        $gtmData   = []; // TODO: call $apiClient->getContainerVersion(...)
-        $ga4Data   = []; // TODO: call $apiClient->runGa4Report(...)
-        $bqData    = []; // TODO: Phase 3 — BigQuery queries
+        // 2. Collect live GTM and GA4 data
+        $collected = $this->collectData($target);
 
         // 3. Run the audit engine
-        $engine   = new AuditEngine($gtmData, $ga4Data, $bqData, $clientRow, (int)$job['id']);
-        $findings = $engine->run();
-        $score    = $engine->healthScore();
+        $verified = $this->db->prepare("SELECT url FROM domains WHERE client_id = ? AND verified = 1");
+        $verified->execute([$clientId]);
+        $verifiedDomains = $verified->fetchAll(\PDO::FETCH_COLUMN);
 
-        // 4. Persist findings
+        $engine   = new AuditEngine(
+            $collected['gtm'],
+            $collected['ga4'],
+            [],
+            $clientRow,
+            (int)$job['id'],
+            (string)($target['ga4_property_id'] ?? ''),
+            $verifiedDomains
+        );
+        $findings = $engine->run();
+
+        // 4. Decide the outcome from source status and gate
+        $outcome = (new AuditOutcome())->decide($collected['source_status'], $findings, $engine->healthScore());
+
+        // 5. Persist findings
         $insert = $this->db->prepare(
             "INSERT INTO audit_findings
              (audit_job_id, category, severity, title, description, recommendation,
@@ -128,9 +146,108 @@ class AuditJobRunner
             ]);
         }
 
-        // 5. Update health score on the job
+        // 6. Record the outcome, health score (complete only) and source status on the job
+        $sourceJson = $collected + [
+            'rule_set_version' => AuditOutcome::RULE_SET_VERSION,
+            'scoring_version'  => AuditOutcome::SCORING_VERSION,
+            'ga4_window_days'  => AuditDataCollector::GA4_WINDOW_DAYS,
+            'gtm_public_id'    => $target['gtm']['public_id'] ?? null,
+            'ga4_property_id'  => $target['ga4_property_id'] ?? null,
+        ];
+
         $this->db->prepare(
-            "UPDATE audit_jobs SET health_score = ?, credits_used = 1 WHERE id = ?"
-        )->execute([$score, $job['id']]);
+            "UPDATE audit_jobs
+             SET status = ?, health_score = ?, credits_used = 1, source_status = ?, completed_at = NOW()
+             WHERE id = ?"
+        )->execute([
+            $outcome['status'],
+            $outcome['health_score'],
+            json_encode($sourceJson),
+            $job['id'],
+        ]);
+    }
+
+    /**
+     * Collects GTM and GA4 data. When GA4 sits on a different Google login (the resolver
+     * sets ga4_connection), GA4 is collected through its own source. Each part is collected
+     * with a target whose other half is blanked, so only the wanted source is queried.
+     *
+     * @return array{gtm: array, ga4: array, source_status: array}
+     */
+    private function collectData(array $target): array
+    {
+        $collector     = new AuditDataCollector();
+        $gtmConnection = $target['connection'] ?? null;
+
+        if (!array_key_exists('ga4_connection', $target)) {
+            return $collector->collect($this->sourceFor($gtmConnection, $target), $target);
+        }
+
+        $gtmTarget = $target;
+        $gtmTarget['ga4_property_id'] = null;
+        $gtmTarget['ga4_reason'] = '';
+
+        $ga4Target = $target;
+        $ga4Target['gtm'] = null;
+        $ga4Target['gtm_reason'] = '';
+
+        $gtmPart = $collector->collect($this->sourceFor($gtmConnection, $gtmTarget), $gtmTarget);
+        $ga4Part = $collector->collect($this->sourceFor($target['ga4_connection'], $ga4Target), $ga4Target);
+
+        return [
+            'gtm' => $gtmPart['gtm'],
+            'ga4' => $ga4Part['ga4'],
+            'source_status' => [
+                'gtm'      => $gtmPart['source_status']['gtm'],
+                'ga4'      => $ga4Part['source_status']['ga4'],
+                'bigquery' => $gtmPart['source_status']['bigquery'],
+                'crawl'    => $gtmPart['source_status']['crawl'],
+            ],
+        ];
+    }
+
+    /**
+     * Returns the source for one connection. The factory runs only when the target needs
+     * the connection. A missing connection row or a factory failure becomes a source that
+     * throws that error, so the collector records it against the sources it serves.
+     */
+    private function sourceFor(?array $connection, array $target): AuditDataSource
+    {
+        if ($target['gtm'] === null && $target['ga4_property_id'] === null) {
+            // Nothing to query. The collector does not call the source without a target.
+            return $this->failingSource(new \LogicException('no_target'));
+        }
+
+        if ($connection === null) {
+            return $this->failingSource(new \RuntimeException('connection_missing'));
+        }
+
+        try {
+            return ($this->sourceFactory)($connection);
+        } catch (\Throwable $e) {
+            return $this->failingSource($e);
+        }
+    }
+
+    private function failingSource(\Throwable $error): AuditDataSource
+    {
+        return new class($error) implements AuditDataSource {
+            private \Throwable $error;
+
+            public function __construct(\Throwable $error)
+            {
+                $this->error = $error;
+            }
+
+            public function liveContainerVersion(string $gtmAccountId, string $containerId): array
+            {
+                throw $this->error;
+            }
+
+            public function ga4Report(string $propertyId, array $dimensions, array $metrics, int $daysBack, int $limit): array
+            {
+                throw $this->error;
+            }
+        };
     }
 }
