@@ -9,6 +9,7 @@ require_once __DIR__ . '/../src/TrackingWorkspace.php';
 require_once __DIR__ . '/../src/ManualParameters.php';
 
 use GTMAuditor\EventDestinationRouter;
+use GTMAuditor\ManualParameters;
 use GTMAuditor\ReleaseEventBuilder;
 use GTMAuditor\TrackingWorkspace;
 
