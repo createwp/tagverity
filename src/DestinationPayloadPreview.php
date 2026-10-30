@@ -9,15 +9,22 @@ final class DestinationPayloadPreview {
         }
         if (!$route) throw new \InvalidArgumentException('destination_not_enabled_for_event');
 
+        $manualValues = [];
+        foreach ($event['manual_parameters'] ?? [] as $manual) {
+            if (is_array($manual) && isset($manual['name'], $manual['value'])) $manualValues[(string)$manual['name']] = (string)$manual['value'];
+        }
+
         $canonicalParameters = [];
         $destinationParameters = [];
         foreach ($route['parameter_mappings'] ?? [] as $mapping) {
             $canonical = (string)($mapping['canonical_name'] ?? '');
             $destination = (string)($mapping['destination_name'] ?? '');
             if ($canonical === '' || $destination === '') continue;
-            $value = $this->sampleParameter($canonical);
+            // Manual literals are sent as typed; Meta nests them in custom_data, which is built from the flat map.
+            $value = array_key_exists($canonical, $manualValues) ? $manualValues[$canonical] : $this->sampleParameter($canonical);
             $canonicalParameters[$canonical] = $value;
-            $destinationParameters[$destination] = $value;
+            $destinationKey = str_starts_with($destination, 'custom_data.') ? substr($destination, strlen('custom_data.')) : $destination;
+            $destinationParameters[$destinationKey] = $value;
         }
 
         $destinationIdentifiers = [];

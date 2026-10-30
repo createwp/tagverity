@@ -479,4 +479,20 @@ try {
     $results[] = ['label' => '013 - real audit data and resource linking', 'ok' => false, 'msg' => $e->getMessage()];
 }
 
+// Migration 015: custom literal parameters stored per event (JSON list, NULL when empty)
+try {
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->execute(['tracking_event_settings', 'manual_parameters']);
+    if ((int)$stmt->fetchColumn() === 0) {
+        $pdo->exec("ALTER TABLE tracking_event_settings ADD COLUMN manual_parameters JSON NULL AFTER selected_parameters");
+    }
+    $results[] = ['label' => '015 - custom event parameters', 'ok' => true, 'msg' => 'OK'];
+} catch (PDOException $e) {
+    error_log('Migration 015 failed: ' . $e->getMessage());
+    $results[] = ['label' => '015 - custom event parameters', 'ok' => false, 'msg' => $e->getMessage()];
+}
+
 echo json_encode(['ok' => !in_array(false, array_column($results, 'ok'), true), 'results' => $results]);

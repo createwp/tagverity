@@ -3,6 +3,7 @@ namespace GTMAuditor;
 
 require_once __DIR__ . '/ElementTemplateBuilder.php';
 require_once __DIR__ . '/EventDestinationRouter.php';
+require_once __DIR__ . '/ManualParameters.php';
 
 final class TrackingWorkspace {
     private ReleaseEventBuilder $eventBuilder;
@@ -114,7 +115,7 @@ final class TrackingWorkspace {
 
     private function loadEventSettings(\PDO $pdo, int $clientId): array {
         $stmt = $pdo->prepare(
-            'SELECT event_key, source_event_name, approved_event_name, event_group, enabled, selected_parameters, trigger_intent, updated_at
+            'SELECT event_key, source_event_name, approved_event_name, event_group, enabled, selected_parameters, manual_parameters, trigger_intent, updated_at
              FROM tracking_event_settings
              WHERE client_id = ?'
         );
@@ -122,6 +123,7 @@ final class TrackingWorkspace {
         $settings = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
             $row['selected_parameters'] = json_decode($row['selected_parameters'], true) ?: [];
+            $row['manual_parameters'] = ManualParameters::decode($row['manual_parameters']);
             $row['enabled'] = (bool)$row['enabled'];
             $settings[$row['event_key']] = $row;
         }
@@ -162,6 +164,7 @@ final class TrackingWorkspace {
                 $selectedParameters = $setting
                     ? array_values(array_intersect($availableParameters, $setting['selected_parameters']))
                     : $availableParameters;
+                $manualParameters = $setting['manual_parameters'] ?? [];
                 $event['event_key'] = $eventKey;
                 $event['source_name'] = $sourceName;
                 $event['system_event_name'] = $sourceName;
@@ -175,7 +178,8 @@ final class TrackingWorkspace {
                     $eventGroup,
                     $availableParameters,
                     $selectedParameters,
-                    $privacy
+                    $privacy,
+                    $manualParameters
                 );
                 $eventTags = $this->destinationRouter->tagTemplates($routes, $sourceName, $eventGroup);
                 $event['event_group'] = $eventGroup;
@@ -184,6 +188,7 @@ final class TrackingWorkspace {
                 $event['tag_templates'] = $eventTags;
                 $event['available_parameters'] = $availableParameters;
                 $event['selected_parameters'] = $selectedParameters;
+                $event['manual_parameters'] = $manualParameters;
                 $event['enabled'] = $setting ? (bool)$setting['enabled'] : (bool)($item['default_enabled'] ?? true);
                 $event['configured'] = $setting !== null;
                 $event['configuration_updated_at'] = $setting['updated_at'] ?? null;
@@ -222,6 +227,7 @@ final class TrackingWorkspace {
                         'configured_name' => $event['configured_name'],
                         'available_parameters' => $event['available_parameters'],
                         'selected_parameters' => $event['selected_parameters'],
+                        'manual_parameters' => $event['manual_parameters'],
                         'enabled' => $event['enabled'],
                         'configured' => $event['configured'],
                         'status' => $event['configured'] ? 'configured_not_live' : 'proposed_not_active',
