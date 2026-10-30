@@ -45,6 +45,13 @@ $payloads = [
     'plaintext swallows preview script' => '<plaintext><img src=x onerror=alert(1)>',
     'noembed raw-text break-out' => '<noembed><img title="</noembed><img src=x onerror=alert(1)>"></noembed>',
     'noframes raw-text break-out' => '<noframes><img title="</noframes><img src=x onerror=alert(1)>"></noframes>',
+    'style end tag with trailing space' => '<style></style x><img src=x onerror=alert(1)></style>',
+    'style end tag with slash' => '<style></style/><img src=x onerror=alert(1)>',
+    'style end tag uppercase with tab' => "<style></STYLE\t><img src=x onerror=alert(1)>",
+    'style end tag with newline' => "<style></style\n><img src=x onerror=alert(1)>",
+    'style end tag with space before close' => '<style>a{}</style ><img src=x onerror=alert(1)>',
+    'title end tag with trailing text' => '<title></title x><img src=x onerror=alert(1)>',
+    'textarea end tag with trailing text' => '<textarea></textarea x><img src=x onerror=alert(1)>',
 ];
 
 // Element local names that must never reach the output (raw-text or foreign-content differential-prone).
@@ -99,6 +106,13 @@ foreach ($payloads as $label => $payload) {
     }
     if ($lastElement === null || previewTestLocalName($lastElement) !== 'script' || strpos($lastElement->textContent, 'tagverity') === false) {
         previewTestFail("{$label}: preview script is not the last element child of body\nOutput:\n{$output}");
+    }
+
+    // (g) no kept style element contains an end-tag sequence, so no browser can close it early.
+    foreach ($elements as $element) {
+        if (previewTestLocalName($element) === 'style' && strpos($element->textContent, '</') !== false) {
+            previewTestFail("{$label}: style element text contains '</' and can be ended early by a browser\nOutput:\n{$output}");
+        }
     }
 
     foreach ($elements as $element) {

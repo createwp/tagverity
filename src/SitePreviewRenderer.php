@@ -25,6 +25,7 @@ final class SitePreviewRenderer {
         $xpath = new \DOMXPath($dom);
         $this->removeNodes($xpath, $this->removalQuery());
         $this->sanitiseAttributes($xpath);
+        $this->neutraliseStyleEndTags($xpath);
 
         $htmlNode = $dom->getElementsByTagName('html')->item(0);
         if (!$htmlNode) {
@@ -110,6 +111,28 @@ final class SitePreviewRenderer {
                 $element->setAttribute('action', '#');
                 $element->setAttribute('method', 'get');
             }
+        }
+    }
+
+    /**
+     * masterminds/html5 ends a raw-text style only on the exact text "</style>", while browsers also end it
+     * on "</style" followed by whitespace, "/" or ">" in any case. Rewriting every "</" inside kept style
+     * elements to "<\/" (equivalent in CSS) means no browser can see an end tag inside them.
+     */
+    private function neutraliseStyleEndTags(\DOMXPath $xpath): void {
+        $styles = [];
+        foreach ($xpath->query('//*[' . self::LOWER . "='style']") as $style) {
+            $styles[] = $style;
+        }
+        foreach ($styles as $style) {
+            $text = $style->textContent;
+            if (!str_contains($text, '</')) {
+                continue;
+            }
+            while ($style->firstChild) {
+                $style->removeChild($style->firstChild);
+            }
+            $style->appendChild($style->ownerDocument->createTextNode(str_replace('</', '<\/', $text)));
         }
     }
 
