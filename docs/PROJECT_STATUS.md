@@ -423,15 +423,11 @@ reliable:
   endpoints.
 - Live visual tagging (`assets/js/mapper-snippet.js`,
   `src/MapperSessionManager.php`, `src/ScanHostAllowlist.php`): the
-  acknowledgement handshake has no per-click correlation id, so a stale ack
-  arriving just after a second click could in theory clear the wrong click's
-  timer (narrow race, requires two clicks within ~1.5s); `start_url` is
-  validated against allowed origins (correct), but a legitimate host with a
-  scheme/port the scan never recorded fails with a generic error rather than
-  a clearer one; `mapper_sessions` rows are never swept after expiry (no
-  cleanup job, table only grows); no automated test exercises an installed
-  snippet behind a server-side-only detection gap (e.g. installed via GTM
-  rather than a literal `<script>` tag TagVerity's own fetch can see).
+  `start_url` is validated against allowed origins (correct), but a legitimate
+  host with a scheme/port the scan never recorded fails with a generic error
+  rather than a clearer one; no automated test exercises an installed snippet
+  behind a server-side-only detection gap (e.g. installed via GTM rather than a
+  literal `<script>` tag TagVerity's own fetch can see).
 
 This is an implementation-status record, not a full security or code review.
 Additional findings should be recorded when formal review begins.
@@ -738,3 +734,10 @@ When implementation work changes the project:
   masterminds/html5 does not apply HTML5 foreign-content rules to raw-text elements,
   so `style` inside SVG and the raw-text elements (`xmp`, `noembed`, `noframes`,
   `plaintext`) are removed outright.
+- Live visual tagging acknowledgements are now correlated per click: the snippet
+  sends a 16-hex-char `selection_id` with each `element_selected` message,
+  `element-mapper.js` echoes it in `element_selected_ack`, and the snippet clears
+  its 1.5 s timer only for a matching id (`isMatchingAck` in
+  `assets/js/mapper-snippet.js`, covered by `tests/MapperSnippetAckTest.js`). The
+  ack-race and unswept `mapper_sessions` concerns are removed from Known
+  Implementation Concerns.
