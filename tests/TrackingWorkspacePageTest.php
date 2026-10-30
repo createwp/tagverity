@@ -35,12 +35,27 @@ $buildBody = ($buildStart === false || $buildEnd === false) ? '' : substr($works
 $saveStart = strpos($workspaceScript, 'async function saveEvent(');
 $saveEnd = strpos($workspaceScript, 'function renderPrivacy(');
 $saveBody = ($saveStart === false || $saveEnd === false) ? '' : substr($workspaceScript, $saveStart, $saveEnd - $saveStart);
+// Destinations are pills with one config panel; no per-destination accordion and no DOM-driven save.
+if (strpos($workspaceScript, "node('details'") !== false) {
+    fwrite(STDERR, "TrackingWorkspace still builds a <details> accordion per destination.\n");
+    exit(1);
+}
+foreach (['aria-pressed', ' more', 'Edit trigger', "can't receive custom parameters", 'destination-pill', 'Show trigger details', 'This trigger comes from your measurement plan'] as $expectedPill) {
+    if (strpos($workspaceScript, $expectedPill) === false) {
+        fwrite(STDERR, 'TrackingWorkspace destination or trigger UI is missing: ' . $expectedPill . "\n");
+        exit(1);
+    }
+}
 if (strpos($buildBody, 'const cardState = {') === false || strpos($buildBody, 'form._cardState = cardState') === false) {
     fwrite(STDERR, "buildEventCard does not create the per-card cardState object.\n");
     exit(1);
 }
 if (strpos($saveBody, 'cardState') === false || strpos($saveBody, 'selected_parameters: selectedParameters') === false || strpos($saveBody, 'manual_parameters: manualParameters') === false) {
     fwrite(STDERR, "saveEvent does not send selected and manual parameters from cardState.\n");
+    exit(1);
+}
+if (strpos($saveBody, 'cardState.destinations') === false || strpos($saveBody, 'destination-enabled') !== false || strpos($saveBody, 'destination-parameter') !== false) {
+    fwrite(STDERR, "saveEvent does not build destinations from cardState.\n");
     exit(1);
 }
 if (strpos($saveBody, 'data-role="parameter"') !== false) {

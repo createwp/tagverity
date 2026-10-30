@@ -985,30 +985,14 @@ tbody td {
 .tracking-parameter input { accent-color: var(--brand-accent); }
 .tracking-destination-fieldset { border: 0; margin-top: var(--space-5); }
 .tracking-destination-fieldset legend { color: var(--text-secondary); font-size: 0.82rem; font-weight: 650; }
-.tracking-destination-grid { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
-.tracking-destination-card { min-width: 0; overflow: hidden; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); transition: border-color var(--duration) var(--ease), background var(--duration) var(--ease); }
-.tracking-destination-card.selected { background: var(--bg-overlay); border-color: #aecbfa; }
-.tracking-destination-card[open] { box-shadow: var(--shadow-sm); }
-.tracking-destination-summary { display: grid; grid-template-columns: minmax(120px, auto) minmax(0, 1fr) 18px; align-items: center; gap: var(--space-3); min-height: 44px; padding: 8px var(--space-3); cursor: pointer; list-style: none; }
-.tracking-destination-summary::-webkit-details-marker { display: none; }
-.tracking-destination-toggle { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
-.tracking-destination-toggle input { accent-color: var(--brand-primary); }
-.tracking-destination-toggle strong { font-size: 0.78rem; }
-.tracking-destination-value { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 0.7rem; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
-.tracking-destination-card.selected .tracking-destination-value { color: var(--brand-primary); font-weight: 600; }
-.tracking-destination-chevron { display: inline-flex; color: var(--text-muted); transition: transform var(--duration) var(--ease); }
-.tracking-destination-chevron .app-icon { width: 16px; height: 16px; }
-.tracking-destination-card[open] .tracking-destination-chevron { transform: rotate(90deg); }
-.tracking-destination-body { padding: var(--space-3); border-top: 1px solid var(--border); }
+.tracking-destination-grid { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 .tracking-destination-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .tracking-destination-controls .form-group { margin: 0; }
-.tracking-destination-card .form-label { font-size: 0.68rem; }
-.tracking-destination-card .form-input,
-.tracking-destination-card .form-select { min-height: 36px; padding: 7px 9px; font-size: 0.75rem; }
-.tracking-destination-card .form-input:disabled { opacity: 0.58; cursor: not-allowed; }
+.tracking-destination-panel .form-label { font-size: 0.68rem; }
+.tracking-destination-panel .form-input,
+.tracking-destination-panel .form-select { min-height: 36px; padding: 7px 9px; font-size: 0.75rem; }
+.tracking-destination-panel .form-input:disabled { opacity: 0.58; cursor: not-allowed; }
 .tracking-destination-format { margin-top: var(--space-2); }
-.tracking-destination-parameters { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0; margin-top: var(--space-3); border: 0; }
-.tracking-destination-parameters legend { width: 100%; color: var(--text-secondary); font-size: 0.7rem; font-weight: 650; margin-bottom: 2px; }
 .tracking-destination-parameter { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-full); cursor: pointer; }
 .tracking-destination-parameter:has(input:checked) { color: var(--brand-primary); border-color: #aecbfa; background: rgba(47,126,218,0.06); }
 .tracking-destination-parameter input { accent-color: var(--brand-primary); }
@@ -1067,9 +1051,6 @@ tbody td {
 .destination-connection-card form > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-4); margin-top: var(--space-4); border-top: 1px solid var(--border); }
 .destination-connection-card footer p { margin: 0; color: var(--text-muted); font-size: 0.68rem; }
 .destination-connection-card footer .btn { flex: 0 0 auto; }
-.tracking-trigger-panel { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
-.tracking-trigger-panel-header { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
-.tracking-trigger-panel-header strong { font-size: 0.8rem; }
 .tracking-trigger-detail { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: var(--space-2); }
 .tracking-trigger-detail span { color: var(--text-muted); font-size: 0.67rem; }
 .tracking-trigger-detail strong, .tracking-trigger-detail code { color: var(--text-secondary); font-size: 0.68rem; overflow-wrap: anywhere; }
@@ -1867,4 +1848,59 @@ body.scroll-locked { overflow: hidden; }
 .tracking-parameter-fieldset .form-help { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .tracking-parameter-option { transition: none; }
+}
+/* ─── Event panel: destination pills, one config panel, trigger summary (C9 Task 5) ─── */
+.tracking-event-card-body { grid-template-columns: minmax(0, 1fr); }
+
+.destination-pill { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; max-width: 100%; margin: 0; padding: 0 var(--space-3) 0 var(--space-2); color: var(--text-primary); font: inherit; font-size: 0.8rem; font-weight: 600; text-align: left; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-full); cursor: pointer; transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), color var(--duration) var(--ease); }
+.destination-pill:hover { background: var(--bg-elevated); border-color: #aecbfa; }
+.destination-pill[aria-pressed="true"] { color: var(--brand-primary); background: var(--bg-overlay); border-color: var(--brand-primary); }
+.destination-pill:focus-visible, .destination-pill-row:focus-visible, .destination-more-search:focus-visible { outline: 3px solid rgba(47,126,218,0.35); outline-offset: 2px; }
+.destination-pill .destination-mark, .destination-pill-row .destination-mark { width: 26px; height: 26px; border-radius: 9px; font-size: 0.6rem; }
+.destination-pill-label { min-width: 0; overflow-wrap: anywhere; }
+.destination-pill-dot { flex: 0 0 auto; width: 8px; height: 8px; background: var(--border-strong); border-radius: 50%; }
+.destination-pill-dot.on { background: var(--success); }
+.destination-pill-more { border-style: dashed; color: var(--brand-primary); }
+.destination-pill-more.active { border-style: solid; border-color: var(--brand-primary); background: var(--bg-overlay); }
+
+.destination-more { position: relative; display: inline-flex; }
+.destination-more-popover { width: min(300px, calc(100vw - 2 * var(--space-4))); padding: var(--space-2); }
+.destination-more-search { width: 100%; min-height: 44px; margin-bottom: var(--space-2); }
+.destination-more-rows { max-height: 280px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.destination-pill-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 44px; margin: 0; padding: 0 var(--space-2); color: var(--text-primary); font: inherit; font-size: 0.82rem; text-align: left; background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; }
+.destination-pill-row:hover { background: var(--bg-elevated); }
+.destination-pill-row[aria-pressed="true"] { color: var(--brand-primary); font-weight: 600; }
+.destination-pill-row .destination-pill-label { flex: 1 1 auto; }
+.destination-more-empty { margin: var(--space-2); }
+
+.tracking-destination-panel { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.tracking-destination-switch { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; color: var(--text-primary); font-size: 0.84rem; font-weight: 600; cursor: pointer; }
+.tracking-destination-switch input { width: 20px; height: 20px; margin: 0; accent-color: var(--brand-primary); }
+.tracking-destination-sends { display: grid; gap: var(--space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
+.tracking-destination-sends legend { margin-bottom: var(--space-1); color: var(--text-secondary); font-size: 0.7rem; font-weight: 650; }
+.tracking-destination-sends > .form-help { margin: 0; }
+.tracking-destination-sends-list { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.tracking-destination-sends-list > .form-help { margin: 0; }
+.destination-sends-target { color: var(--text-muted); font-family: 'Roboto Mono', monospace; font-size: 0.66rem; overflow-wrap: anywhere; }
+.tracking-destination-sends .tracking-parameter-add { margin-top: 0; }
+.tracking-destination-sends .chip-add { min-height: 44px; }
+@media (prefers-reduced-motion: reduce) {
+  .destination-pill { transition: none; }
+}
+
+.tracking-trigger-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.tracking-trigger-summary-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-width: 0; }
+.tracking-trigger-runs { color: var(--text-secondary); font-size: 0.78rem; overflow-wrap: anywhere; }
+.tracking-trigger-note { margin: 0; color: var(--text-muted); font-size: 0.74rem; }
+.tracking-trigger-summary-actions { display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+.tracking-trigger-edit { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.tracking-trigger-edit .app-icon { width: 14px; height: 14px; }
+.tracking-trigger-toggle { width: 44px; height: 44px; }
+.tracking-trigger-toggle .app-icon { transition: transform var(--duration) var(--ease); }
+.tracking-trigger-toggle[aria-expanded="true"] .app-icon { transform: rotate(90deg); }
+.tracking-trigger-details { display: grid; gap: var(--space-2); margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.tracking-trigger-details[hidden] { display: none; }
+.tracking-trigger-details .tracking-trigger-tags { margin: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .tracking-trigger-toggle .app-icon { transition: none; }
 }
