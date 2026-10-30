@@ -6,10 +6,8 @@ require_once __DIR__ . '/../includes/crypto.php';
 require_once __DIR__ . '/../includes/rate-limit.php';
 require_once __DIR__ . '/../includes/google-oauth.php';
 require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../src/GoogleApiClient.php';
 
 use Google\Client as GoogleClient;
-use GTMAuditor\GoogleApiClient;
 
 header('Content-Type: text/html; charset=utf-8');
 
@@ -86,6 +84,7 @@ try {
     $stmt->execute([(int)$user['account_id'], $googleSub]);
     $savedConnection = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    // Connecting imports nothing. The user picks GA4 properties and GTM containers on the connections page.
     $query = parse_url($returnPath, PHP_URL_QUERY);
     $returnParameters = [];
     if (is_string($query)) parse_str($query, $returnParameters);
@@ -94,26 +93,8 @@ try {
         $stmt = db()->prepare('SELECT id FROM clients WHERE id = ? AND account_id = ? LIMIT 1');
         $stmt->execute([$clientId, (int)$user['account_id']]);
         if ($stmt->fetchColumn()) {
-            $properties = (new GoogleApiClient($savedConnection))->listGa4PropertiesAndStreams();
-            if ($properties) {
-                $pdo = db();
-                $pdo->beginTransaction();
-                $deleteStreams = $pdo->prepare('DELETE gs FROM ga4_streams gs JOIN ga4_properties gp ON gp.id = gs.ga4_property_id WHERE gp.client_id = ? AND gp.google_connection_id = ?');
-                $deleteStreams->execute([$clientId, (int)$savedConnection['id']]);
-                $deleteProperties = $pdo->prepare('DELETE FROM ga4_properties WHERE client_id = ? AND google_connection_id = ?');
-                $deleteProperties->execute([$clientId, (int)$savedConnection['id']]);
-                $insertProperty = $pdo->prepare('INSERT INTO ga4_properties (client_id, google_connection_id, property_id, display_name, last_synced_at) VALUES (?, ?, ?, ?, NOW())');
-                $insertStream = $pdo->prepare('INSERT INTO ga4_streams (ga4_property_id, stream_id, measurement_id, stream_url) VALUES (?, ?, ?, ?)');
-                foreach ($properties as $property) {
-                    $insertProperty->execute([$clientId, (int)$savedConnection['id'], (string)$property['property_id'], (string)$property['display_name']]);
-                    $propertyRowId = (int)$pdo->lastInsertId();
-                    foreach ($property['streams'] ?? [] as $stream) {
-                        if (empty($stream['measurement_id'])) continue;
-                        $insertStream->execute([$propertyRowId, (string)$stream['stream_id'], (string)$stream['measurement_id'], (string)($stream['stream_url'] ?? '')]);
-                    }
-                }
-                $pdo->commit();
-            }
+            header('Location: ' . APP_URL . '/connections.php?client_id=' . $clientId . '&connection_id=' . (int)$savedConnection['id'] . '&pick=1');
+            exit;
         }
     }
 
@@ -121,7 +102,6 @@ try {
     exit;
 
 } catch (\Throwable $e) {
-    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
     error_log('[GTMAuditor][OAuth] Callback failed: ' . $e->getMessage());
     header('Location: ' . APP_URL . $returnPath . $returnSeparator . 'error=oauth_failed');
     exit;

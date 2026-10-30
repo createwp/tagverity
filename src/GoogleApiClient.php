@@ -22,16 +22,20 @@ use Google\Service\CloudResourceManager;
  *  - Instantiate the correct Google service client
  *  - Expose clean, typed methods for each API call the audit engine needs
  *
- * Every method wraps its API call in try/catch — failures return null or []
- * rather than crashing the audit job.
+ * AuditDataSource and DiscoverySource methods (liveContainerVersion, ga4Report,
+ * listGa4AccountSummaries, listGa4Streams, listGtmAccountsAndContainers) THROW, so
+ * callers can classify the failure with SourceStatus::fromThrowable(). The legacy
+ * getContainerVersion, runGa4Report and getTotalSessions swallow failures and return
+ * null, [] or 0 for existing callers.
  */
-class GoogleApiClient
+class GoogleApiClient implements AuditDataSource, DiscoverySource
 {
     private GoogleClient $client;
 
     /**
      * @param array $connection  Row from google_connections table
      *                           Must include `refresh_token` (AES-256-encrypted)
+     * @throws \RuntimeException  'authentication_failed' (401) when the refresh token is rejected
      */
     public function __construct(array $connection)
     {
@@ -49,47 +53,52 @@ class GoogleApiClient
         // Decrypt the stored refresh token and exchange for a fresh access token.
         // Why: access tokens expire after 1 hour; we always refresh before API calls.
         $refreshToken = decrypt_token($connection['refresh_token']);
-        $this->client->fetchAccessTokenWithRefreshToken($refreshToken);
+        $token = $this->client->fetchAccessTokenWithRefreshToken($refreshToken);
+        if (isset($token['error'])) {
+            throw new \RuntimeException('authentication_failed', 401);
+        }
     }
 
     // ── GTM Management API ────────────────────────────────────────────────────
 
     /**
-     * List all GTM accounts + containers accessible via this OAuth token.
+     * List the GTM accounts visible to this login, each with its containers. Throws on failure.
      *
-     * @return array[]  Array of container summaries from the GTM API
+     * @return array[]  [['account_id', 'account_name', 'containers' => [['container_id', 'public_id', 'name']]]]
+     * @throws \Throwable
      */
-    public function listGtmContainers(): array
+    public function listGtmAccountsAndContainers(): array
     {
-        try {
-            $gtm      = new TagManager($this->client);
-            $response = $gtm->accounts->listAccounts();
-            $accounts = $response->getAccount() ?? [];
-            $results  = [];
+        $gtm      = new TagManager($this->client);
+        $accounts = $gtm->accounts->listAccounts()->getAccount() ?? [];
+        $results  = [];
 
-            foreach ($accounts as $account) {
-                $accountPath  = 'accounts/' . $account->getAccountId();
-                $containers   = $gtm->accounts_containers->listAccountsContainers($accountPath)->getContainer() ?? [];
+        foreach ($accounts as $account) {
+            $containers = $gtm->accounts_containers
+                ->listAccountsContainers('accounts/' . $account->getAccountId())
+                ->getContainer() ?? [];
 
-                foreach ($containers as $container) {
-                    $results[] = [
-                        'account_id'   => $account->getAccountId(),
-                        'container_id' => $container->getContainerId(),
-                        'public_id'    => $container->getPublicId(), // GTM-XXXXX
-                        'name'         => $container->getName(),
-                        'domain_name'  => $container->getDomainName() ?? [],
-                    ];
-                }
+            $list = [];
+            foreach ($containers as $container) {
+                $list[] = [
+                    'container_id' => (string) $container->getContainerId(),
+                    'public_id'    => (string) $container->getPublicId(), // GTM-XXXXX
+                    'name'         => (string) $container->getName(),
+                ];
             }
-            return $results;
-        } catch (\Throwable $e) {
-            error_log('[GTMAuditor][GTM API] listGtmContainers: ' . $e->getMessage());
-            return [];
+            $results[] = [
+                'account_id'   => (string) $account->getAccountId(),
+                'account_name' => (string) $account->getName(),
+                'containers'   => $list,
+            ];
         }
+
+        return $results;
     }
 
     /**
      * Fetch the full live container version (tags, triggers, variables).
+     * Swallows failures and returns null (kept for existing callers).
      *
      * @param string $account_id
      * @param string $container_id
@@ -98,90 +107,119 @@ class GoogleApiClient
     public function getContainerVersion(string $account_id, string $container_id): ?array
     {
         try {
-            $gtm     = new TagManager($this->client);
-            $version = $gtm->accounts_containers_versions->live(
-                "accounts/{$account_id}/containers/{$container_id}"
-            );
-
-            // Serialize objects to plain arrays for easy inspection
-            $serialize = fn($items) => array_map(fn($item) => json_decode(json_encode($item), true), $items ?? []);
-
-            return [
-                'tags'      => $serialize($version->getTag()),
-                'triggers'  => $serialize($version->getTrigger()),
-                'variables' => $serialize($version->getVariable()),
-                'container' => [
-                    'account_id'   => $account_id,
-                    'container_id' => $container_id,
-                ],
-            ];
+            return $this->liveContainerVersion($account_id, $container_id);
         } catch (\Throwable $e) {
             error_log('[GTMAuditor][GTM API] getContainerVersion: ' . $e->getMessage());
             return null;
         }
     }
 
-    // ── GA4 Admin API — for auto-discovery ───────────────────────────────────
+    /**
+     * Fetch the full live container version. Throws on failure so the collector can classify it.
+     *
+     * @return array{tags: array, triggers: array, variables: array, container: array{account_id: string, container_id: string}}
+     * @throws \Throwable
+     */
+    public function liveContainerVersion(string $gtmAccountId, string $containerId): array
+    {
+        $gtm     = new TagManager($this->client);
+        $version = $gtm->accounts_containers_versions->live(
+            "accounts/{$gtmAccountId}/containers/{$containerId}"
+        );
+
+        // Serialize objects to plain arrays for easy inspection
+        $serialize = fn($items) => array_map(fn($item) => json_decode(json_encode($item), true), $items ?? []);
+
+        return [
+            'tags'      => $serialize($version->getTag()),
+            'triggers'  => $serialize($version->getTrigger()),
+            'variables' => $serialize($version->getVariable()),
+            'container' => [
+                'account_id'   => $gtmAccountId,
+                'container_id' => $containerId,
+            ],
+        ];
+    }
+
+    // ── GA4 Admin API — for discovery ────────────────────────────────────────
 
     /**
-     * List all GA4 properties + streams accessible via this OAuth token.
-     * Used during auto-discovery after OAuth connect.
+     * List the GA4 accounts and their properties visible to this login. Throws on failure.
      *
-     * @return array[]  Each item: {property_id, display_name, streams: [{stream_id, measurement_id, stream_url}]}
+     * @return array[]  [['account_id', 'account_name', 'properties' => [['property_id', 'display_name']]]]
+     * @throws \Throwable
      */
-    public function listGa4PropertiesAndStreams(): array
+    public function listGa4AccountSummaries(): array
     {
-        try {
-            $admin      = new AnalyticsAdmin($this->client);
-            $properties = [];
-            $pageToken  = null;
+        $admin     = new AnalyticsAdmin($this->client);
+        $accounts  = [];
+        $pageToken = null;
 
-            // Paginate through all properties
-            do {
-                $params   = ['pageSize' => 200];
-                if ($pageToken) $params['pageToken'] = $pageToken;
-                $response  = $admin->properties->listProperties($params);
-                $propList  = $response->getProperties() ?? [];
+        do {
+            $params = ['pageSize' => 200];
+            if ($pageToken) $params['pageToken'] = $pageToken;
+            $response = $admin->accountSummaries->listAccountSummaries($params);
 
-                foreach ($propList as $prop) {
-                    $propertyId = str_replace('properties/', '', $prop->getName());
-                    $streams    = [];
-
-                    try {
-                        $streamsResp = $admin->properties_dataStreams->listPropertiesDataStreams("properties/{$propertyId}");
-                        foreach ($streamsResp->getDataStreams() ?? [] as $stream) {
-                            $webData = $stream->getWebStreamData();
-                            $streams[] = [
-                                'stream_id'      => str_replace("properties/{$propertyId}/dataStreams/", '', $stream->getName()),
-                                'measurement_id' => $webData ? $webData->getMeasurementId() : null,
-                                'stream_url'     => $webData ? $webData->getDefaultUri() : null,
-                            ];
-                        }
-                    } catch (\Throwable $e) {
-                        error_log('[GTMAuditor][GA4 Admin] streams for ' . $propertyId . ': ' . $e->getMessage());
-                    }
-
+            foreach ($response->getAccountSummaries() ?? [] as $summary) {
+                $properties = [];
+                foreach ($summary->getPropertySummaries() ?? [] as $property) {
                     $properties[] = [
-                        'property_id'  => $propertyId,
-                        'display_name' => $prop->getDisplayName(),
-                        'streams'      => $streams,
+                        'property_id'  => str_replace('properties/', '', (string) $property->getProperty()),
+                        'display_name' => (string) $property->getDisplayName(),
                     ];
                 }
+                $accounts[] = [
+                    'account_id'   => str_replace('accounts/', '', (string) $summary->getAccount()),
+                    'account_name' => (string) $summary->getDisplayName(),
+                    'properties'   => $properties,
+                ];
+            }
 
-                $pageToken = $response->getNextPageToken();
-            } while ($pageToken);
+            $pageToken = $response->getNextPageToken();
+        } while ($pageToken);
 
-            return $properties;
-        } catch (\Throwable $e) {
-            error_log('[GTMAuditor][GA4 Admin] listProperties: ' . $e->getMessage());
-            return [];
-        }
+        return $accounts;
+    }
+
+    /**
+     * Web data streams of one GA4 property. App streams are skipped. Throws on failure.
+     *
+     * @return array[]  [['stream_id', 'measurement_id', 'stream_url']]
+     * @throws \Throwable
+     */
+    public function listGa4Streams(string $propertyId): array
+    {
+        $admin     = new AnalyticsAdmin($this->client);
+        $parent    = "properties/{$propertyId}";
+        $streams   = [];
+        $pageToken = null;
+
+        do {
+            $params = ['pageSize' => 200];
+            if ($pageToken) $params['pageToken'] = $pageToken;
+            $response = $admin->properties_dataStreams->listPropertiesDataStreams($parent, $params);
+
+            foreach ($response->getDataStreams() ?? [] as $stream) {
+                $webData = $stream->getWebStreamData();
+                if ($webData === null) continue;
+                $streams[] = [
+                    'stream_id'      => str_replace($parent . '/dataStreams/', '', (string) $stream->getName()),
+                    'measurement_id' => (string) $webData->getMeasurementId(),
+                    'stream_url'     => $webData->getDefaultUri(),
+                ];
+            }
+
+            $pageToken = $response->getNextPageToken();
+        } while ($pageToken);
+
+        return $streams;
     }
 
     // ── GA4 Data API — for audit checks ──────────────────────────────────────
 
     /**
      * Run a GA4 reporting query and return structured rows.
+     * Swallows failures and returns [] (kept for existing callers).
      *
      * @param string  $property_id   GA4 property ID (numeric only)
      * @param array   $dimensions    e.g. ['landingPage', 'sessionDefaultChannelGrouping']
@@ -198,46 +236,57 @@ class GoogleApiClient
         int    $limit     = 50
     ): array {
         try {
-            $analyticsData = new AnalyticsData($this->client);
-
-            $dimObjects    = array_map(fn($d) => new Dimension(['name' => $d]), $dimensions);
-            $metricObjects = array_map(fn($m) => new Metric(['name' => $m]), $metrics);
-
-            $request = new RunReportRequest([
-                'dimensions' => $dimObjects,
-                'metrics'    => $metricObjects,
-                'dateRanges' => [new DateRange([
-                    'startDate' => "{$days_back}daysAgo",
-                    'endDate'   => 'today',
-                ])],
-                'limit' => $limit,
-            ]);
-
-            $response = $analyticsData->properties->runReport(
-                "properties/{$property_id}",
-                $request
-            );
-
-            $rows      = [];
-            $dimNames  = array_map(fn($d) => $d->getName(), $response->getDimensionHeaders() ?? []);
-            $metNames  = array_map(fn($m) => $m->getName(), $response->getMetricHeaders() ?? []);
-
-            foreach ($response->getRows() ?? [] as $row) {
-                $item = [];
-                foreach ($row->getDimensionValues() ?? [] as $i => $dv) {
-                    $item[$dimNames[$i] ?? "dim_{$i}"] = $dv->getValue();
-                }
-                foreach ($row->getMetricValues() ?? [] as $i => $mv) {
-                    $item[$metNames[$i] ?? "met_{$i}"] = $mv->getValue();
-                }
-                $rows[] = $item;
-            }
-
-            return $rows;
+            return $this->ga4Report($property_id, $dimensions, $metrics, $days_back, $limit);
         } catch (\Throwable $e) {
             error_log("[GTMAuditor][GA4 Data] runGa4Report(property={$property_id}): " . $e->getMessage());
             return [];
         }
+    }
+
+    /**
+     * Run a GA4 reporting query. Throws on failure so the collector can classify it.
+     *
+     * @return array[]  Array of ['dimension_name' => value, 'metric_name' => value]
+     * @throws \Throwable
+     */
+    public function ga4Report(string $propertyId, array $dimensions, array $metrics, int $daysBack, int $limit): array
+    {
+        $analyticsData = new AnalyticsData($this->client);
+
+        $dimObjects    = array_map(fn($d) => new Dimension(['name' => $d]), $dimensions);
+        $metricObjects = array_map(fn($m) => new Metric(['name' => $m]), $metrics);
+
+        $request = new RunReportRequest([
+            'dimensions' => $dimObjects,
+            'metrics'    => $metricObjects,
+            'dateRanges' => [new DateRange([
+                'startDate' => "{$daysBack}daysAgo",
+                'endDate'   => 'today',
+            ])],
+            'limit' => $limit,
+        ]);
+
+        $response = $analyticsData->properties->runReport(
+            "properties/{$propertyId}",
+            $request
+        );
+
+        $rows      = [];
+        $dimNames  = array_map(fn($d) => $d->getName(), $response->getDimensionHeaders() ?? []);
+        $metNames  = array_map(fn($m) => $m->getName(), $response->getMetricHeaders() ?? []);
+
+        foreach ($response->getRows() ?? [] as $row) {
+            $item = [];
+            foreach ($row->getDimensionValues() ?? [] as $i => $dv) {
+                $item[$dimNames[$i] ?? "dim_{$i}"] = $dv->getValue();
+            }
+            foreach ($row->getMetricValues() ?? [] as $i => $mv) {
+                $item[$metNames[$i] ?? "met_{$i}"] = $mv->getValue();
+            }
+            $rows[] = $item;
+        }
+
+        return $rows;
     }
 
     /**

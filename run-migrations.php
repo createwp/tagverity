@@ -331,4 +331,152 @@ try {
     $results[] = ['label' => '012 - live visual tagging sessions', 'ok' => false, 'msg' => $e->getMessage()];
 }
 
+// Migration 013: real audit data and resource linking
+try {
+    $columnExists = function (string $table, string $column) use ($pdo): bool {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+        );
+        $stmt->execute([$table, $column]);
+        return (int)$stmt->fetchColumn() > 0;
+    };
+    $indexExists = function (string $table, string $index) use ($pdo): bool {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?"
+        );
+        $stmt->execute([$table, $index]);
+        return (int)$stmt->fetchColumn() > 0;
+    };
+
+    // audit_jobs: source status JSON and the partial outcome
+    if (!$columnExists('audit_jobs', 'source_status')) {
+        $pdo->exec("ALTER TABLE audit_jobs ADD COLUMN source_status JSON NULL AFTER data_sources");
+    }
+    $stmt = $pdo->prepare(
+        "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->execute(['audit_jobs', 'status']);
+    if (strpos((string)$stmt->fetchColumn(), "'partial'") === false) {
+        $pdo->exec(
+            "ALTER TABLE audit_jobs MODIFY status ENUM('queued','running','complete','partial','failed')
+             NOT NULL DEFAULT 'queued'"
+        );
+    }
+
+    // gtm_containers: audit target and link metadata
+    $gtmContainerColumns = [
+        'audit_target' => "TINYINT(1) NOT NULL DEFAULT 0",
+        'gtm_account_name' => "VARCHAR(255) NOT NULL DEFAULT ''",
+        'linked_by_user_id' => "INT UNSIGNED NULL",
+        'linked_at' => "DATETIME NULL",
+    ];
+    foreach ($gtmContainerColumns as $column => $definition) {
+        if (!$columnExists('gtm_containers', $column)) {
+            $pdo->exec("ALTER TABLE gtm_containers ADD COLUMN {$column} {$definition}");
+        }
+    }
+    // Remove duplicate containers (keep lowest id, matched via keep_id) and their dependants
+    // before the unique key. Data cleanup runs in a transaction; ALTER stays outside it.
+    if (!$indexExists('gtm_containers', 'uq_gtm_containers_client_container')) {
+        $gtmKeep = "(SELECT client_id, container_id, MIN(id) AS keep_id
+                     FROM gtm_containers GROUP BY client_id, container_id HAVING COUNT(*) > 1) k";
+        $pdo->beginTransaction();
+        $pdo->exec(
+            "DELETE dc FROM domain_containers dc
+             JOIN gtm_containers dup ON dup.id = dc.container_id
+             JOIN {$gtmKeep} ON k.client_id = dup.client_id AND k.container_id = dup.container_id
+                 AND dup.id <> k.keep_id"
+        );
+        $pdo->exec(
+            "DELETE dup FROM gtm_containers dup
+             JOIN {$gtmKeep} ON k.client_id = dup.client_id AND k.container_id = dup.container_id
+                 AND dup.id <> k.keep_id"
+        );
+        $pdo->commit();
+        $pdo->exec(
+            "ALTER TABLE gtm_containers
+             ADD UNIQUE KEY uq_gtm_containers_client_container (client_id, container_id)"
+        );
+    }
+
+    // ga4_properties: audit target, account details and link metadata
+    $ga4PropertyColumns = [
+        'audit_target' => "TINYINT(1) NOT NULL DEFAULT 0",
+        'ga4_account_id' => "VARCHAR(30) NOT NULL DEFAULT ''",
+        'ga4_account_name' => "VARCHAR(255) NOT NULL DEFAULT ''",
+        'linked_by_user_id' => "INT UNSIGNED NULL",
+        'linked_at' => "DATETIME NULL",
+    ];
+    foreach ($ga4PropertyColumns as $column => $definition) {
+        if (!$columnExists('ga4_properties', $column)) {
+            $pdo->exec("ALTER TABLE ga4_properties ADD COLUMN {$column} {$definition}");
+        }
+    }
+    // Remove duplicate properties (keep lowest id, matched via keep_id). BigQuery connections are
+    // re-pointed to the kept property rather than deleted; streams and domain links of duplicates go.
+    if (!$indexExists('ga4_properties', 'uq_ga4_properties_client_property')) {
+        $ga4Keep = "(SELECT client_id, property_id, MIN(id) AS keep_id
+                     FROM ga4_properties GROUP BY client_id, property_id HAVING COUNT(*) > 1) k";
+        $pdo->beginTransaction();
+        $pdo->exec(
+            "UPDATE bigquery_connections b
+             JOIN ga4_properties dup ON dup.id = b.ga4_property_id
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id
+             SET b.ga4_property_id = k.keep_id"
+        );
+        $pdo->exec(
+            "DELETE s FROM ga4_streams s
+             JOIN ga4_properties dup ON dup.id = s.ga4_property_id
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id"
+        );
+        $pdo->exec(
+            "DELETE dp FROM domain_ga4_properties dp
+             JOIN ga4_properties dup ON dup.id = dp.property_id
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id"
+        );
+        $pdo->exec(
+            "DELETE dup FROM ga4_properties dup
+             JOIN {$ga4Keep} ON k.client_id = dup.client_id AND k.property_id = dup.property_id
+                 AND dup.id <> k.keep_id"
+        );
+        $pdo->commit();
+        $pdo->exec(
+            "ALTER TABLE ga4_properties
+             ADD UNIQUE KEY uq_ga4_properties_client_property (client_id, property_id)"
+        );
+    }
+
+    // ga4_streams: one row per stream within a property
+    if (!$indexExists('ga4_streams', 'uq_ga4_streams_property_stream')) {
+        $streamKeep = "(SELECT ga4_property_id, stream_id, MIN(id) AS keep_id
+                        FROM ga4_streams GROUP BY ga4_property_id, stream_id HAVING COUNT(*) > 1) k";
+        $pdo->beginTransaction();
+        $pdo->exec(
+            "DELETE dup FROM ga4_streams dup
+             JOIN {$streamKeep} ON k.ga4_property_id = dup.ga4_property_id AND k.stream_id = dup.stream_id
+                 AND dup.id <> k.keep_id"
+        );
+        $pdo->commit();
+        $pdo->exec(
+            "ALTER TABLE ga4_streams
+             ADD UNIQUE KEY uq_ga4_streams_property_stream (ga4_property_id, stream_id)"
+        );
+    }
+
+
+    $results[] = ['label' => '013 - real audit data and resource linking', 'ok' => true, 'msg' => 'OK'];
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log('Migration 013 failed: ' . $e->getMessage());
+    $results[] = ['label' => '013 - real audit data and resource linking', 'ok' => false, 'msg' => $e->getMessage()];
+}
+
 echo json_encode(['ok' => !in_array(false, array_column($results, 'ok'), true), 'results' => $results]);

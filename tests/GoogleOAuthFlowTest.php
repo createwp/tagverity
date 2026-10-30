@@ -12,7 +12,12 @@ foreach (['openid', 'email', 'https://www.googleapis.com/auth/analytics', 'https
 }
 
 $callback = file_get_contents(__DIR__ . '/../api/oauth-callback.php');
-foreach (['oauth_return_to', 'listGa4PropertiesAndStreams', 'verifyIdToken', 'destination-connections'] as $expected) {
+if (strpos($callback, 'listGa4PropertiesAndStreams') !== false) {
+    fwrite(STDERR, "Google OAuth callback still imports GA4 properties on connect.\n");
+    exit(1);
+}
+
+foreach (['oauth_return_to', 'pick=1', 'verifyIdToken', 'destination-connections'] as $expected) {
     if (strpos($callback, $expected) === false) {
         fwrite(STDERR, "Google OAuth callback is missing: {$expected}.\n");
         exit(1);

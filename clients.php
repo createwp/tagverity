@@ -54,8 +54,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 // ── Fetch all clients for this account ────────────────────────────────────────
 $clients_stmt = $pdo->prepare(
     "SELECT c.*,
-       (SELECT COUNT(*) FROM audit_jobs aj WHERE aj.client_id = c.id AND aj.status = 'complete') AS total_audits,
-       (SELECT health_score FROM audit_jobs aj2 WHERE aj2.client_id = c.id AND aj2.status = 'complete' ORDER BY aj2.completed_at DESC LIMIT 1) AS last_score
+       (SELECT COUNT(*) FROM audit_jobs aj WHERE aj.client_id = c.id AND aj.status IN ('complete','partial')) AS total_audits,
+       (SELECT aj2.id FROM audit_jobs aj2 WHERE aj2.client_id = c.id AND aj2.status IN ('complete','partial','failed') ORDER BY aj2.completed_at DESC LIMIT 1) AS last_audit_id,
+       (SELECT aj2.status FROM audit_jobs aj2 WHERE aj2.client_id = c.id AND aj2.status IN ('complete','partial','failed') ORDER BY aj2.completed_at DESC LIMIT 1) AS last_status,
+       (SELECT aj3.health_score FROM audit_jobs aj3 WHERE aj3.client_id = c.id AND aj3.status IN ('complete','partial','failed') ORDER BY aj3.completed_at DESC LIMIT 1) AS last_score
      FROM clients c
      WHERE c.account_id = ?
      ORDER BY c.created_at DESC"
@@ -124,6 +126,19 @@ function scoreColor(int $score): string {
             <div style="text-align:center">
               <div style="font-size:1.4rem;font-weight:800;color:<?= scoreColor((int)$c['last_score']) ?>"><?= (int)$c['last_score'] ?></div>
               <div class="text-xs text-muted">Health</div>
+            </div>
+            <?php elseif ($c['last_status'] === 'partial'): ?>
+            <div style="text-align:center">
+              <div class="text-sm text-muted" style="font-weight:700">—</div>
+              <span class="badge badge-warning">Partial</span>
+              <div class="text-xs text-muted">Score unavailable</div>
+            </div>
+            <?php elseif ($c['last_status'] === 'failed'): ?>
+            <div style="text-align:center">
+              <div class="text-sm text-muted" style="font-weight:700">—</div>
+              <span class="badge badge-critical">Failed</span>
+              <div class="text-xs text-muted">Latest audit couldn't run</div>
+              <a href="audit-report.php?id=<?= (int)$c['last_audit_id'] ?>" class="text-xs" style="color:var(--brand-primary)">See why</a>
             </div>
             <?php endif; ?>
           </div>
