@@ -1,4 +1,4 @@
-# Event destinations accordion QA
+# Event destinations QA
 
 ## Source visual truth
 
@@ -9,9 +9,9 @@
 
 ## Implementation target
 
-- Compact single-column rows for GA4, PostHog, Meta, and Google Ads.
+- Compact cards for GA4, PostHog, Meta, and Google Ads in a responsive grid.
 - Platform status remains visible while the technical setup is collapsed.
-- One accordion can be open at a time.
+- Destination cards open their setup in a modal dialog. Only one setup is open at a time because the dialog is modal; it closes with Escape or the backdrop and returns focus to the card.
 - The open state contains a three-step plain-language guide, official documentation links, an account link, connection status, and the minimum required fields.
 - Google destinations use the existing OAuth sign-in and automatically discover accessible GA4 streams.
 - PostHog and Meta use guided manual setup until their production OAuth applications are configured.
@@ -34,7 +34,7 @@
 ## Required fidelity surfaces
 
 - Fonts and typography: existing TagVerity type tokens and hierarchy retained; browser comparison blocked.
-- Spacing and layout rhythm: code now uses full-width compact accordion rows and a two-column open panel; visual comparison blocked.
+- Spacing and layout rhythm: code now uses a card grid (one column below 640 px, two to 1100 px, four above) with a modal setup dialog; visual comparison blocked.
 - Colors and visual tokens: existing TagVerity semantic tokens retained; visual comparison blocked.
 - Image quality and assets: no new raster assets were required; existing application icon system retained.
 - Copy and content: technical API wording was replaced with guided, task-oriented language and official help links.
@@ -51,6 +51,7 @@
 
 - Initial source finding: all destination forms were visible simultaneously, creating unnecessary height and technical overload.
 - Fix made: converted the grid to one-at-a-time accordions and added progressive guidance plus sign-in/manual paths.
+- Superseded in C9 (2026-10-30): the accordions were replaced by the card grid and setup dialog described above.
 - Post-fix visual evidence: blocked because the browser capture surface was unavailable.
 
 final result: blocked

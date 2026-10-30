@@ -1013,6 +1013,8 @@ document.addEventListener('DOMContentLoaded', function () {
       showToast(error.message, 'error');
     } finally {
       button.disabled = false; button.textContent = 'Save privacy policy';
+      // Disabling the focused button drops focus to the body; hand it back so the drawer trap still applies.
+      if (document.activeElement === document.body) button.focus();
     }
   }
 
@@ -1067,7 +1069,25 @@ document.addEventListener('DOMContentLoaded', function () {
     modal.classList.remove('visible');
     document.body.classList.remove('tracking-modal-open');
     window.setTimeout(function () { modal.hidden = true; }, 150);
+    // The opener sits inside the privacy drawer, so focus returns there and not to the page.
     document.getElementById('tracking-hash-demo-open').focus();
+  }
+
+  // Keeps Tab and Shift+Tab inside the open SHA-256 example. The drawer trap in app.js is bypassed while this is open.
+  function trapHashDemoTab(event, modal) {
+    const items = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled])')).filter(function (item) {
+      return item.getClientRects().length > 0;
+    });
+    if (!items.length) { event.preventDefault(); return; }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    const outside = !modal.contains(active);
+    if (event.shiftKey && (active === first || outside)) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (active === last || outside)) {
+      event.preventDefault(); first.focus();
+    }
   }
 
   async function previewDestinationPayload(event, platform, button) {
@@ -1173,6 +1193,16 @@ document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('tracking-hash-demo-open').hidden = !hashed;
     });
   });
+  // Privacy drawer: opened from the header lock button. TagVerityUI handles Escape, the backdrop and focus return;
+  // the observer keeps aria-expanded in step however the drawer closes.
+  const privacyDrawer = document.getElementById('privacy-drawer');
+  const privacyOpenButton = document.getElementById('privacy-drawer-open');
+  new MutationObserver(function () {
+    privacyOpenButton.setAttribute('aria-expanded', privacyDrawer.classList.contains('open') ? 'true' : 'false');
+  }).observe(privacyDrawer, {attributes: true, attributeFilter: ['class']});
+  privacyOpenButton.addEventListener('click', function () { window.TagVerityUI.openDrawer(privacyDrawer, privacyOpenButton); });
+  document.getElementById('privacy-drawer-close').addEventListener('click', function () { window.TagVerityUI.closeDrawer(privacyDrawer); });
+
   document.getElementById('tracking-privacy-form').addEventListener('submit', savePrivacy);
   document.getElementById('tracking-hash-demo-open').addEventListener('click', openHashDemo);
   document.getElementById('tracking-hash-close').addEventListener('click', closeHashDemo);
@@ -1182,11 +1212,24 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('tracking-payload-close').addEventListener('click', closePayloadPreview);
   document.getElementById('tracking-payload-done').addEventListener('click', closePayloadPreview);
   document.getElementById('tracking-payload-modal').addEventListener('click', function (event) { if (event.target === this) closePayloadPreview(); });
+  // The SHA-256 example opens above the privacy drawer. Capture-phase handling lets it own Escape and Tab
+  // while it is open, so the drawer's document-level handlers in app.js never see those keys.
   document.addEventListener('keydown', function (event) {
     const modal = document.getElementById('tracking-hash-modal');
-    if (event.key === 'Escape' && !modal.hidden) closeHashDemo();
+    if (!modal.hidden) {
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        closeHashDemo();
+        return;
+      }
+      if (event.key === 'Tab') {
+        event.stopPropagation();
+        trapHashDemoTab(event, modal);
+        return;
+      }
+    }
     const payloadModal = document.getElementById('tracking-payload-modal');
     if (event.key === 'Escape' && !payloadModal.hidden) closePayloadPreview();
-  });
+  }, true);
   load();
 });

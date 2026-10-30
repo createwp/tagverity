@@ -939,10 +939,9 @@ tbody td {
 .tracking-summary-item:last-child { border-right: 0; }
 .tracking-summary-item strong { color: var(--text-primary); font-size: 0.8rem; white-space: nowrap; }
 .tracking-summary-item span { color: var(--text-muted); font-size: 0.68rem; white-space: nowrap; }
-.tracking-workspace-layout { display: grid; grid-template-columns: minmax(620px, 1fr) clamp(350px, 23vw, 410px); gap: clamp(var(--space-4), 1.5vw, var(--space-6)); align-items: start; }
 .tracking-event-section { min-width: 0; }
-.tracking-privacy-card h2, .tracking-hash-demo h2 { font-size: 1.05rem; margin: var(--space-1) 0; }
-.tracking-privacy-card > p, .tracking-hash-demo > p { color: var(--text-muted); font-size: 0.78rem; }
+.tracking-hash-demo h2 { font-size: 1.05rem; margin: var(--space-1) 0; }
+.tracking-hash-demo > p { color: var(--text-muted); font-size: 0.78rem; }
 .tracking-browser-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(150px, 190px) minmax(160px, 210px); gap: var(--space-2); margin-bottom: var(--space-3); }
 .tracking-search-field { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; padding: 0 var(--space-3); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .tracking-search-field:focus-within { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(47,126,218,0.12); }
@@ -1068,7 +1067,6 @@ tbody td {
 .tracking-page-button:hover:not(:disabled) { color: var(--brand-primary); border-color: #aecbfa; }
 .tracking-page-button:disabled { opacity: 0.4; cursor: not-allowed; }
 .tracking-page-button .app-icon { width: 16px; height: 16px; }
-.tracking-privacy-column { display: grid; gap: var(--space-4); position: sticky; top: 92px; }
 .tracking-privacy-lock { padding: var(--space-3); margin: var(--space-4) 0; color: var(--success); background: var(--success-bg); border: 1px solid var(--success-border); border-radius: var(--radius-md); }
 .tracking-privacy-lock strong { display: block; font-size: 0.8rem; }
 .tracking-privacy-lock p { color: var(--text-secondary); font-size: 0.7rem; line-height: 1.45; margin-top: 2px; }
@@ -1118,11 +1116,6 @@ tbody td {
 .tracking-payload-columns h3 { margin-bottom: var(--space-2); font-size: 0.78rem; }
 .tracking-payload-columns pre { min-height: 300px; max-height: 440px; overflow: auto; padding: var(--space-4); color: var(--text-secondary); background: #f7f8fb; border: 1px solid var(--border); border-radius: var(--radius-md); font: 0.68rem/1.55 'Roboto Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-@media (max-width: 1380px) {
-  .tracking-workspace-layout { grid-template-columns: 1fr; }
-  .tracking-privacy-column { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 @media (max-width: 768px) {
   .destination-connection-grid { grid-template-columns: 1fr; }
   .destination-connection-card > summary { grid-template-columns: 42px minmax(0, 1fr) 18px; }
@@ -1136,7 +1129,7 @@ tbody td {
   .tracking-payload-columns { grid-template-columns: 1fr; }
   .tracking-path { grid-template-columns: 1fr 1fr; }
   .tracking-path li { border-bottom: 1px solid var(--border); }
-  .tracking-status-guide, .tracking-privacy-column { grid-template-columns: 1fr; }
+  .tracking-status-guide { grid-template-columns: 1fr; }
   .tracking-workspace-summary { flex-wrap: wrap; row-gap: var(--space-2); }
   .tracking-browser-toolbar { grid-template-columns: 1fr; }
   .tracking-controls-row { align-items: flex-start; flex-direction: column; }
@@ -1947,3 +1940,13 @@ body.scroll-locked { overflow: hidden; }
   .tracking-destination-preview-actions { flex-direction: column; align-items: stretch; }
   .tracking-destination-preview-actions .btn { width: 100%; }
 }
+
+/* ─── Privacy drawer: on-demand slide-over from the Tags & triggers header (C9 Task 6) ─── */
+.privacy-drawer-open-label { margin-left: var(--space-1); }
+@media (max-width: 479px) { .privacy-drawer-open-label { display: none; } }
+.reveal-drawer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-5) var(--space-5) var(--space-4); border-bottom: 1px solid var(--border); }
+.reveal-drawer-header h2 { font-size: 1.05rem; margin-top: var(--space-1); }
+.reveal-drawer-close { flex: 0 0 auto; width: 44px; height: 44px; padding: 0; justify-content: center; }
+.reveal-drawer-body { padding: var(--space-5); }
+.reveal-drawer-body .tracking-policy-note { margin-top: var(--space-4); }
+#privacy-drawer-open { min-height: 44px; }
