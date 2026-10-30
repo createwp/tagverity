@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: tagverity_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo_mysql, mbstring, intl, curl, dom, openssl
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Create .env for CI
+        run: |
+          cp tests/ci/env.ci .env
+          echo "TOKEN_ENCRYPTION_KEY=$(php -r 'echo base64_encode(random_bytes(32));')" >> .env
+
+      - name: Lint PHP
+        run: |
+          find . -name '*.php' -not -path './vendor/*' -not -path './tests/fixtures/*' -not -path './.claude/*' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h127.0.0.1 -uroot -proot --silent; then
+              echo "MySQL is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready in time" >&2
+          exit 1
+
+      - name: Load database schema
+        run: mysql -h127.0.0.1 -uroot -proot tagverity_test < sql/001_initial_schema.sql
+
+      - name: Run migrations
+        run: |
+          output=$(php run-migrations.php)
+          echo "$output"
+          echo "$output" | grep -q '"ok":true'
+
+      - name: Run tests
+        run: composer test
